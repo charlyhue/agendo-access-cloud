@@ -181,3 +181,21 @@ async fn security_headers_present(pool: PgPool) {
     assert_eq!(css.status, StatusCode::OK);
     assert!(css.headers.get("content-type").unwrap().to_str().unwrap().starts_with("text/css"));
 }
+
+/// Un tiers qui connaît l'adresse redemande des codes : celui que la personne a reçu reste
+/// valable (sinon la récupération de compte se bloque à volonté).
+#[sqlx::test]
+async fn earlier_code_survives_new_requests(pool: PgPool) {
+    let app = TestApp::new(pool);
+    active_account(&app, "alice@exemple.fr").await;
+    ask_code(&app, "alice@exemple.fr").await;
+    let first = last_code(&app);
+    ask_code(&app, "alice@exemple.fr").await;
+    let second = last_code(&app);
+    if first == second {
+        return; // une chance sur un million : rien à vérifier
+    }
+    assert_eq!(verify(&app, "alice@exemple.fr", &first).await.status, StatusCode::SEE_OTHER);
+    // Une connexion réussie consomme tous les codes en cours.
+    assert_eq!(verify(&app, "alice@exemple.fr", &second).await.status, StatusCode::UNAUTHORIZED);
+}

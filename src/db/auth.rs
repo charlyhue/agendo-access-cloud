@@ -73,14 +73,10 @@ fn code_hash(account: Uuid, code: &str) -> Vec<u8> {
     crypto::hash(&format!("{account}:{code}"))
 }
 
-/// Nouveau code de connexion ; les précédents cessent de valoir. Rend le code en clair.
+/// Nouveau code de connexion ; rend le code en clair. Les codes encore valides le restent :
+/// un tiers qui redemande des codes pour cette adresse ne rend pas inutile celui que la
+/// personne a reçu (leur nombre est borné par la limite horaire du compte).
 pub async fn create_email_code(db: &PgPool, account: Uuid, now: DateTime<Utc>) -> sqlx::Result<String> {
-    let mut tx = db.begin().await?;
-    sqlx::query("UPDATE email_codes SET consumed_at = $2 WHERE account_id = $1 AND consumed_at IS NULL")
-        .bind(account)
-        .bind(now)
-        .execute(&mut *tx)
-        .await?;
     let code = crypto::six_digit_code();
     sqlx::query("INSERT INTO email_codes (id, account_id, code_hash, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)")
         .bind(Uuid::new_v4())
@@ -88,36 +84,36 @@ pub async fn create_email_code(db: &PgPool, account: Uuid, now: DateTime<Utc>) -
         .bind(code_hash(account, &code))
         .bind(now)
         .bind(now + EMAIL_CODE_TTL)
-        .execute(&mut *tx)
+        .execute(db)
         .await?;
-    tx.commit().await?;
     Ok(code)
 }
 
-/// Vérifie un code : compte un essai, et consomme le code s'il est bon. Au-delà de
-/// [`EMAIL_CODE_ATTEMPTS`] essais, même le bon code est refusé.
+/// Vérifie un code contre tous les codes en cours du compte : chaque essai compte pour chacun
+/// d'eux, et un code ayant passé [`EMAIL_CODE_ATTEMPTS`] essais ne vaut plus, même bon. Un
+/// succès consomme tous les codes en cours.
 pub async fn check_email_code(db: &PgPool, account: Uuid, code: &str, now: DateTime<Utc>) -> sqlx::Result<bool> {
-    let row: Option<(Uuid, Vec<u8>, i32)> = sqlx::query_as(
+    let mut tx = db.begin().await?;
+    let active: Vec<(Vec<u8>, i32)> = sqlx::query_as(
         "UPDATE email_codes SET attempts = attempts + 1
-         WHERE id = (SELECT id FROM email_codes
-                     WHERE account_id = $1 AND consumed_at IS NULL AND expires_at > $2
-                     ORDER BY created_at DESC LIMIT 1)
-         RETURNING id, code_hash, attempts",
+         WHERE account_id = $1 AND consumed_at IS NULL AND expires_at > $2
+         RETURNING code_hash, attempts",
     )
     .bind(account)
     .bind(now)
-    .fetch_optional(db)
+    .fetch_all(&mut *tx)
     .await?;
-    let Some((id, hash, attempts)) = row else { return Ok(false) };
-    if attempts > EMAIL_CODE_ATTEMPTS || hash != code_hash(account, code) {
-        return Ok(false);
+    let hash = code_hash(account, code);
+    let valid = active.iter().any(|(h, attempts)| *attempts <= EMAIL_CODE_ATTEMPTS && *h == hash);
+    if valid {
+        sqlx::query("UPDATE email_codes SET consumed_at = $2 WHERE account_id = $1 AND consumed_at IS NULL")
+            .bind(account)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
     }
-    let consumed = sqlx::query("UPDATE email_codes SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL")
-        .bind(id)
-        .bind(now)
-        .execute(db)
-        .await?;
-    Ok(consumed.rows_affected() == 1)
+    tx.commit().await?;
+    Ok(valid)
 }
 
 /// Validité d'un défi WebAuthn.
