@@ -24,3 +24,23 @@ et la vérification WebAuthn (`agendo-webauthn`) viennent du dépôt `charlyhue/
 
 Les conventions de travail sont dans [CLAUDE.md](CLAUDE.md), le déploiement dans
 `docs/deploy.md`.
+
+## Démarrer
+
+```sh
+scripts/test.sh                                  # PostgreSQL de test (Docker) + toute la suite
+cargo clippy --all-targets -- -D warnings
+cargo deny check
+cargo run -- --help                              # serve, migrate, keygen, healthcheck, admin
+```
+
+| Chemin | Rôle |
+|---|---|
+| `src/api/` | API des maisons : `enroll`, `tokens`, `acme`, clés de confiance |
+| `src/portal/` | portail : connexion (passkey, code e-mail), invitation, maisons, compte |
+| `src/admin.rs` | commandes `admin invite`, `list`, `suspend`, `resume`, `revoke-house` |
+| `src/db/` | accès à PostgreSQL, par domaine ; schéma dans `migrations/` |
+| `src/signing.rs` | clé de signature, jetons de tunnel et push |
+| `src/mail.rs`, `src/dns.rs` | Resend, Cloudflare (et leurs doublures de test) |
+| `templates/`, `static/` | pages HTML (askama), feuille de style, script WebAuthn |
+| `tests/` | tests d'intégration `#[sqlx::test]`, un PostgreSQL jetable par test |

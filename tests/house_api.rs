@@ -166,3 +166,39 @@ async fn deleted_account_house_is_revoked(pool: PgPool) {
     let r = tokens(&app, &house.house_id, &key).await;
     assert_eq!((r.status, reason(&r).as_str()), (StatusCode::FORBIDDEN, "revoked"));
 }
+
+/// La brique du socle n'envoie que `Agendo-Signature` (pas d'`Agendo-House`) : le plan de
+/// contrôle retrouve la maison par sa clé.
+async fn brick_style(app: &TestApp, method: Method, path: &str, body: &[u8], key: &SigningKey) -> common::TestResponse {
+    let signature = agendo_access_protocol::signature::sign_request(key, method.as_str(), path, body, app.clock.unix());
+    let mut request = app.request(method, path).header("agendo-signature", &signature);
+    if !body.is_empty() {
+        request = request.header("content-type", "application/json");
+    }
+    request.bytes(body.to_vec()).send().await
+}
+
+#[sqlx::test]
+async fn tokens_without_house_header(pool: PgPool) {
+    let app = TestApp::new(pool);
+    let (first, first_key, _) = enrolled_house(&app, "alice@exemple.fr", 2).await;
+    let (second, second_key, _) = enrolled_house(&app, "bob@exemple.fr", 3).await;
+    for (house, key) in [(&first, &first_key), (&second, &second_key)] {
+        let r = brick_style(&app, Method::POST, TOKENS_PATH, b"", key).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+        let tokens: TokensResponse = serde_json::from_slice(&r.body).unwrap();
+        let trusted = TrustedKeys::new(app.state.signer.trusted()).unwrap();
+        let claims = TunnelClaims::verify(&tokens.tunnel_token, &trusted, app.clock.unix()).unwrap();
+        assert_eq!((claims.sub.as_str(), claims.host.as_str()), (house.house_id.as_str(), house.host.as_str()));
+    }
+    // ACME de la seconde maison : son propre nom d'hôte.
+    let body = serde_json::to_vec(&serde_json::json!({"value": "abc"})).unwrap();
+    assert_eq!(brick_style(&app, Method::POST, ACME_PATH, &body, &second_key).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(app.dns.records()[0].0, format!("_acme-challenge.{}", second.host));
+    // Clé inconnue, horloge décalée : refus explicites.
+    let r = brick_style(&app, Method::POST, TOKENS_PATH, b"", &SigningKey::from_bytes(&[9; 32])).await;
+    assert_eq!((r.status, reason(&r).as_str()), (StatusCode::UNAUTHORIZED, "bad_signature"));
+    admin::revoke_house(&app.state, &first.host).await.unwrap();
+    let r = brick_style(&app, Method::POST, TOKENS_PATH, b"", &first_key).await;
+    assert_eq!((r.status, reason(&r).as_str()), (StatusCode::FORBIDDEN, "revoked"));
+}

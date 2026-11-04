@@ -65,3 +65,27 @@ async fn log_request(request: Request, next: Next) -> Response {
     }
     response
 }
+
+/// Sonde de santé de l'image (`agendo-access-cloud healthcheck`, image sans shell ni curl) :
+/// `GET /healthz` en HTTP brut sur l'adresse d'écoute (la boucle locale si elle est
+/// `0.0.0.0`). Erreur si le serveur ne répond pas `200` en 3 secondes.
+pub async fn probe(listen: std::net::SocketAddr) -> anyhow::Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut addr = listen;
+    if addr.ip().is_unspecified() {
+        addr.set_ip(match addr {
+            std::net::SocketAddr::V4(_) => std::net::Ipv4Addr::LOCALHOST.into(),
+            std::net::SocketAddr::V6(_) => std::net::Ipv6Addr::LOCALHOST.into(),
+        });
+    }
+    let check = async {
+        let mut stream = tokio::net::TcpStream::connect(addr).await?;
+        stream.write_all(b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").await?;
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await?;
+        let status_line = response.split(|b| *b == b'\n').next().unwrap_or_default();
+        anyhow::ensure!(status_line.starts_with(b"HTTP/1.1 200"), "le serveur ne répond pas 200 sur /healthz");
+        Ok(())
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(3), check).await.map_err(|_| anyhow::anyhow!("délai dépassé"))?
+}

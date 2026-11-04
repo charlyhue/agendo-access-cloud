@@ -2,7 +2,7 @@
 
 use std::{net::SocketAddr, path::PathBuf, process::ExitCode};
 
-use agendo_access_cloud::{AppState, MIGRATOR, admin, app, config, signing};
+use agendo_access_cloud::{AppState, MIGRATOR, admin, app, config, probe, signing};
 use clap::{Parser, Subcommand};
 use sqlx::postgres::PgPoolOptions;
 
@@ -27,6 +27,8 @@ enum Command {
         /// Fichier à créer (mode 0600).
         file: PathBuf,
     },
+    /// Sonde de santé (HEALTHCHECK de l'image) : `GET /healthz` sur `AGENDO_CLOUD_LISTEN`.
+    Healthcheck,
     /// Administration des comptes et des maisons.
     Admin {
         #[command(subcommand)]
@@ -101,6 +103,13 @@ async fn run(command: Command) -> anyhow::Result<()> {
             let pool = PgPoolOptions::new().max_connections(2).connect(&url).await?;
             MIGRATOR.run(&pool).await?;
             println!("Migrations appliquées.");
+        }
+        Command::Healthcheck => {
+            let listen = match std::env::var("AGENDO_CLOUD_LISTEN") {
+                Ok(v) if !v.trim().is_empty() => v.trim().parse()?,
+                _ => SocketAddr::from(([0, 0, 0, 0], 8080)),
+            };
+            probe(listen).await?;
         }
         Command::Keygen { kid, file } => print!("{}", signing::keygen(&file, &kid)?),
         Command::Admin { command } => {

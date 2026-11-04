@@ -1,8 +1,12 @@
-//! Requêtes signées par la maison : `Agendo-House` (identifiant reçu au rattachement) et
-//! `Agendo-Signature` (protocole, `signature::verify_request`), puis jetons et ACME.
+//! Requêtes signées par la maison (`Agendo-Signature`, `signature::verify_request` du
+//! protocole), puis jetons et ACME.
 //!
-//! `Agendo-House` n'est pas signé : il désigne la clé contre laquelle vérifier, et un
-//! identifiant faux fait simplement échouer la vérification.
+//! L'en-tête du protocole ne dit pas quelle maison signe. Le plan de contrôle la retrouve :
+//! - par `Agendo-House: <house_id>` s'il est présent (non signé : il désigne seulement la clé
+//!   contre laquelle vérifier ; un identifiant faux fait échouer la vérification) ;
+//! - sinon, comme le fait la brique du socle aujourd'hui, en essayant la clé de chaque maison.
+//!   Coût linéaire en nombre de maisons, acceptable en V1 sur invitation ; un identifiant dans
+//!   le protocole le supprimera (demande notée dans la PR).
 
 use agendo_access_protocol::{
     api::{AcmeRequest, RefusalReason, TokensResponse},
@@ -54,30 +58,79 @@ impl FromRequest<AppState> for SignedHouse {
             return Err(ApiError::new(RefusalReason::RateLimited, "trop de requêtes depuis cette adresse"));
         }
         let header = |name: &str| parts.headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
-        let Some(house_id) = header(HOUSE_HEADER).and_then(|v| Uuid::parse_str(v.trim()).ok()) else {
-            return Err(bad_signature("en-tête Agendo-House absent ou invalide"));
-        };
         let Some(signature) = header(SIGNATURE_HEADER) else {
             return Err(bad_signature("en-tête Agendo-Signature absent"));
         };
         let body = axum::body::to_bytes(body, MAX_BODY)
             .await
             .map_err(|_| ApiError::new(RefusalReason::BadRequest, "corps trop volumineux"))?;
-        let Some(house) = houses::by_id(&state.db, house_id).await? else {
-            return Err(bad_signature("maison inconnue"));
+        let request = Signed {
+            header: &signature,
+            method: parts.method.as_str(),
+            path: parts.uri.path_and_query().map_or(parts.uri.path(), |p| p.as_str()),
+            body: &body,
+            now: now.timestamp(),
         };
-        let key = decode_public_key(&house.public_key).map_err(|e| anyhow::anyhow!("clé de maison en base invalide : {e}"))?;
-        let path = parts.uri.path_and_query().map_or(parts.uri.path(), |p| p.as_str());
-        verify_request(&signature, parts.method.as_str(), path, &body, now.timestamp(), &key).map_err(|e| match e {
-            SignatureError::Stale => bad_signature("horodatage hors de la fenêtre de 60 s : vérifiez l'horloge de la maison"),
-            SignatureError::Malformed => bad_signature("en-tête Agendo-Signature mal formé"),
-            SignatureError::Invalid => bad_signature("signature invalide"),
-        })?;
+        let house = match header(HOUSE_HEADER) {
+            Some(id) => {
+                let Ok(id) = Uuid::parse_str(id.trim()) else {
+                    return Err(bad_signature("en-tête Agendo-House invalide"));
+                };
+                let Some(house) = houses::by_id(&state.db, id).await? else {
+                    return Err(bad_signature("maison inconnue"));
+                };
+                request.verify(&house)?;
+                house
+            }
+            None => request.find(houses::all(&state.db).await?)?,
+        };
         let limit = state.config.limits.house_per_minute;
         if !rate_limit::hit(&state.db, &format!("maison:{}", house.id), window, limit, now).await? {
             return Err(ApiError::new(RefusalReason::RateLimited, "trop de requêtes pour cette maison"));
         }
         Ok(Self { house, body })
+    }
+}
+
+/// Requête à vérifier.
+struct Signed<'a> {
+    header: &'a str,
+    method: &'a str,
+    path: &'a str,
+    body: &'a [u8],
+    now: i64,
+}
+
+fn signature_error(e: SignatureError) -> ApiError {
+    match e {
+        SignatureError::Stale => bad_signature("horodatage hors de la fenêtre de 60 s : vérifiez l'horloge de la maison"),
+        SignatureError::Malformed => bad_signature("en-tête Agendo-Signature mal formé"),
+        SignatureError::Invalid => bad_signature("signature invalide"),
+    }
+}
+
+impl Signed<'_> {
+    fn check(&self, house: &House) -> Result<(), SignatureError> {
+        // Une clé illisible en base ne vérifie rien (journalisée par l'appelant).
+        let Ok(key) = decode_public_key(&house.public_key) else { return Err(SignatureError::Invalid) };
+        verify_request(self.header, self.method, self.path, self.body, self.now, &key)
+    }
+
+    fn verify(&self, house: &House) -> Result<(), ApiError> {
+        self.check(house).map_err(signature_error)
+    }
+
+    /// Maison dont la clé vérifie la signature. Format et horodatage ne dépendent pas de la
+    /// clé : leur refus tombe dès la première.
+    fn find(&self, houses: Vec<House>) -> Result<House, ApiError> {
+        for house in houses {
+            match self.check(&house) {
+                Ok(()) => return Ok(house),
+                Err(SignatureError::Invalid) => {}
+                Err(e) => return Err(signature_error(e)),
+            }
+        }
+        Err(bad_signature("aucune maison rattachée ne correspond à cette signature"))
     }
 }
 

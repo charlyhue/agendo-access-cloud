@@ -31,6 +31,12 @@ pub async fn by_id(db: impl PgExecutor<'_>, id: Uuid) -> sqlx::Result<Option<Hou
     sqlx::query_as(concat!("SELECT ", columns!(), " FROM houses WHERE id = $1")).bind(id).fetch_optional(db).await
 }
 
+/// Toutes les maisons, révoquées comprises (identification par signature, voir
+/// `api::signed`).
+pub async fn all(db: impl PgExecutor<'_>) -> sqlx::Result<Vec<House>> {
+    sqlx::query_as(concat!("SELECT ", columns!(), " FROM houses ORDER BY enrolled_at")).fetch_all(db).await
+}
+
 /// Maison par nom d'hôte complet ou par étiquette.
 pub async fn by_host_or_label(db: impl PgExecutor<'_>, value: &str) -> sqlx::Result<Option<House>> {
     sqlx::query_as(concat!("SELECT ", columns!(), " FROM houses WHERE host = $1 OR label = $1"))
