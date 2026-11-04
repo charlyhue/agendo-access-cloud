@@ -30,8 +30,8 @@ async fn code_login_flow(pool: PgPool) {
     active_account(&app, "alice@exemple.fr").await;
     let r = ask_code(&app, "alice@exemple.fr").await;
     assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(app.mailer.sent().len(), 1);
-    let code = last_code(&app);
+    assert_eq!(app.sent().await.len(), 1);
+    let code = last_code(&app).await;
     let r = verify(&app, "alice@exemple.fr", &code).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER);
     assert_eq!(r.location(), Some("/maisons"));
@@ -57,7 +57,7 @@ async fn code_login_ignores_case(pool: PgPool) {
     let app = TestApp::new(pool);
     active_account(&app, "alice@exemple.fr").await;
     ask_code(&app, "  ALICE@Exemple.fr").await;
-    let code = last_code(&app);
+    let code = last_code(&app).await;
     assert_eq!(verify(&app, "Alice@exemple.FR", &code).await.status, StatusCode::SEE_OTHER);
 }
 
@@ -74,7 +74,7 @@ async fn unknown_email_same_answer(pool: PgPool) {
     let known = ask_code(&app, "alice@exemple.fr").await;
     let unknown = ask_code(&app, "inconnu@exemple.fr").await;
     let invited = ask_code(&app, "bob@exemple.fr").await;
-    assert_eq!(app.mailer.sent().len(), 1);
+    assert_eq!(app.sent().await.len(), 1);
     for r in [&unknown, &invited] {
         assert_eq!(r.status, known.status);
         assert_eq!(
@@ -89,7 +89,7 @@ async fn code_expires_after_10_min(pool: PgPool) {
     let app = TestApp::new(pool);
     active_account(&app, "alice@exemple.fr").await;
     ask_code(&app, "alice@exemple.fr").await;
-    let code = last_code(&app);
+    let code = last_code(&app).await;
     app.clock.advance(Duration::minutes(10));
     assert_eq!(verify(&app, "alice@exemple.fr", &code).await.status, StatusCode::UNAUTHORIZED);
 }
@@ -99,7 +99,7 @@ async fn code_five_attempts(pool: PgPool) {
     let app = TestApp::new(pool);
     active_account(&app, "alice@exemple.fr").await;
     ask_code(&app, "alice@exemple.fr").await;
-    let code = last_code(&app);
+    let code = last_code(&app).await;
     let wrong = if code == "000000" { "111111" } else { "000000" };
     for _ in 0..5 {
         let r = verify(&app, "alice@exemple.fr", wrong).await;
@@ -117,10 +117,10 @@ async fn code_rate_limited(pool: PgPool) {
     for _ in 0..7 {
         assert_eq!(ask_code(&app, "alice@exemple.fr").await.status, StatusCode::OK);
     }
-    assert_eq!(app.mailer.sent().len(), 5);
+    assert_eq!(app.sent().await.len(), 5);
     app.clock.advance(Duration::hours(1));
     ask_code(&app, "alice@exemple.fr").await;
-    assert_eq!(app.mailer.sent().len(), 6);
+    assert_eq!(app.sent().await.len(), 6);
     // 30 cérémonies par minute et par IP.
     let mut last = StatusCode::OK;
     for _ in 0..30 {
@@ -142,7 +142,7 @@ async fn cross_origin_post_refused(pool: PgPool) {
             .await;
         assert_eq!(r.status, StatusCode::FORBIDDEN, "{origin}");
     }
-    assert!(app.mailer.sent().is_empty());
+    assert!(app.sent().await.is_empty());
 }
 
 #[sqlx::test]
@@ -189,9 +189,9 @@ async fn earlier_code_survives_new_requests(pool: PgPool) {
     let app = TestApp::new(pool);
     active_account(&app, "alice@exemple.fr").await;
     ask_code(&app, "alice@exemple.fr").await;
-    let first = last_code(&app);
+    let first = last_code(&app).await;
     ask_code(&app, "alice@exemple.fr").await;
-    let second = last_code(&app);
+    let second = last_code(&app).await;
     if first == second {
         return; // une chance sur un million : rien à vérifier
     }

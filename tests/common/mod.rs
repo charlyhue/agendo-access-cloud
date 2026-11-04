@@ -74,6 +74,12 @@ impl TestApp {
         TestRequest { app: self, builder, body: Body::empty() }
     }
 
+    /// E-mails envoyés, une fois les envois en tâche de fond achevés.
+    pub async fn sent(&self) -> Vec<agendo_access_cloud::mail::Mail> {
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        self.mailer.sent()
+    }
+
     pub async fn get(&self, path: &str) -> TestResponse {
         self.request(Method::GET, path).send().await
     }
@@ -192,9 +198,9 @@ pub async fn active_account(app: &TestApp, email: &str) -> uuid::Uuid {
     id
 }
 
-/// Code à 6 chiffres du dernier e-mail envoyé.
-pub fn last_code(app: &TestApp) -> String {
-    let mail = app.mailer.sent().pop().expect("un e-mail");
+/// Code à 6 chiffres du dernier e-mail envoyé (le code part en tâche de fond).
+pub async fn last_code(app: &TestApp) -> String {
+    let mail = app.sent().await.pop().expect("un e-mail");
     let start = mail.text.find(" : ").expect("code dans l'e-mail") + 3;
     mail.text[start..start + 6].to_owned()
 }
@@ -203,7 +209,7 @@ pub fn last_code(app: &TestApp) -> String {
 pub async fn login(app: &TestApp, email: &str) -> String {
     let r = app.request(Method::POST, "/connexion/code").form(&[("email", email)]).send().await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.text());
-    let code = last_code(app);
+    let code = last_code(app).await;
     let r = app.request(Method::POST, "/connexion/code/verifier").form(&[("email", email), ("code", &code)]).send().await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.text());
     r.session_cookie().expect("cookie de session")

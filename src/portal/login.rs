@@ -57,9 +57,14 @@ pub async fn send_code(State(state): State<AppState>, ip: ClientIp, Form(form): 
         let key = format!("code:{}", account.id);
         if rate_limit::hit(&state.db, &key, chrono::Duration::hours(1), limit, now).await? {
             let code = auth::create_email_code(&state.db, account.id, now).await?;
-            if let Err(e) = state.mailer.send(mail::login_code(&email, &code)).await {
-                tracing::error!(compte = %account.id, erreur = %format!("{e:#}"), "code de connexion non envoyé");
-            }
+            // Envoi en tâche de fond : attendre Resend allongerait la réponse pour les seuls
+            // comptes existants, et son délai les révélerait.
+            let (mailer, mail, account) = (state.mailer.clone(), mail::login_code(&email, &code), account.id);
+            tokio::spawn(async move {
+                if let Err(e) = mailer.send(mail).await {
+                    tracing::error!(compte = %account, erreur = %format!("{e:#}"), "code de connexion non envoyé");
+                }
+            });
         } else {
             tracing::warn!(compte = %account.id, "codes de connexion : limite horaire atteinte");
         }
