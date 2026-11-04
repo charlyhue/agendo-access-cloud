@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Connexion{% endblock %}
+{% block head %}<script src="/static/webauthn.js" defer></script>{% endblock %}
 {% block content %}
 <section class="carte">
   <h1>Connexion</h1>
   {% if let Some(error) = error %}<p class="erreur" role="alert">{{ error }}</p>{% endif %}
-  {% block passkey %}{% endblock %}
+  <button type="button" data-webauthn="login"
+          data-options="/connexion/passkey/options"
+          data-finish="/connexion/passkey/terminer">Se connecter avec une passkey</button>
+  <p class="erreur" role="alert" data-webauthn-error hidden></p>
   <h2>Recevoir un code par e-mail</h2>
   <p class="discret">En secours, si votre passkey n'est pas disponible sur cet appareil.</p>
   <form method="post" action="/connexion/code">

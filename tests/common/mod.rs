@@ -201,3 +201,44 @@ pub async fn login(app: &TestApp, email: &str) -> String {
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.text());
     r.session_cookie().expect("cookie de session")
 }
+
+pub const RP_ID: &str = "compte.exemple.fr";
+pub const ORIGIN: &str = "https://compte.exemple.fr";
+
+/// Invite `email` par la commande d'administration ; rend le jeton du lien envoyé.
+pub async fn invite(app: &TestApp, email: &str) -> String {
+    agendo_access_cloud::admin::invite(&app.state, email).await.unwrap();
+    let mail = app.mailer.sent().pop().expect("e-mail d'invitation");
+    let start = mail.text.find("/invitation/").unwrap() + "/invitation/".len();
+    mail.text[start..].split_whitespace().next().unwrap().to_owned()
+}
+
+/// Enregistre une passkey de `authenticator` par le lien d'invitation (cérémonie complète).
+pub async fn register_invitation(app: &TestApp, token: &str, authenticator: &agendo_webauthn::soft::Authenticator) -> TestResponse {
+    let options = app.request(Method::POST, &format!("/invitation/{token}/options")).json(&serde_json::json!({})).send().await;
+    assert_eq!(options.status, StatusCode::OK, "{}", options.text());
+    let challenge = options.json()["challenge"].as_str().unwrap().to_owned();
+    let credential = authenticator.register(RP_ID, ORIGIN, &challenge);
+    app.request(Method::POST, &format!("/invitation/{token}/terminer"))
+        .json(&serde_json::json!({"credential": credential, "name": "iPhone"}))
+        .send()
+        .await
+}
+
+/// Compte invité puis activé par passkey ; rend la session ouverte et l'authentificateur.
+pub async fn onboard(app: &TestApp, email: &str, seed: u8) -> (String, agendo_webauthn::soft::Authenticator) {
+    let token = invite(app, email).await;
+    let authenticator = agendo_webauthn::soft::Authenticator::new(seed);
+    let r = register_invitation(app, &token, &authenticator).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    (r.session_cookie().expect("session ouverte"), authenticator)
+}
+
+/// Connexion par passkey (cérémonie complète).
+pub async fn passkey_login(app: &TestApp, authenticator: &mut agendo_webauthn::soft::Authenticator) -> TestResponse {
+    let options = app.request(Method::POST, "/connexion/passkey/options").json(&serde_json::json!({})).send().await;
+    assert_eq!(options.status, StatusCode::OK, "{}", options.text());
+    let challenge = options.json()["challenge"].as_str().unwrap().to_owned();
+    let credential = authenticator.assert(RP_ID, ORIGIN, &challenge);
+    app.request(Method::POST, "/connexion/passkey/terminer").json(&serde_json::json!({"credential": credential})).send().await
+}

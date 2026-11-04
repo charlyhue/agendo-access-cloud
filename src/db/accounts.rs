@@ -102,3 +102,60 @@ pub async fn create_invitation(db: &mut PgConnection, account: Uuid, now: DateTi
     .await?;
     Ok(token)
 }
+
+/// État d'un lien d'invitation.
+#[derive(Debug, Clone)]
+pub enum Invitation {
+    /// Utilisable : l'invitation et son compte.
+    Valid { id: Uuid, account: Account },
+    Expired,
+    Used,
+    Unknown,
+}
+
+#[derive(FromRow)]
+struct InvitationRow {
+    invitation_id: Uuid,
+    expires_at: DateTime<Utc>,
+    consumed_at: Option<DateTime<Utc>>,
+    #[sqlx(flatten)]
+    account: Account,
+}
+
+/// Invitation du lien, avec son compte.
+pub async fn invitation(db: impl PgExecutor<'_>, token: &str, now: DateTime<Utc>) -> sqlx::Result<Invitation> {
+    let row: Option<InvitationRow> = sqlx::query_as(
+        "SELECT i.id AS invitation_id, i.expires_at, i.consumed_at,
+                a.id, a.email, a.status, a.subscription_active, a.subscription_source, a.webauthn_user_id,
+                a.created_at, a.activated_at
+         FROM invitations i JOIN accounts a ON a.id = i.account_id
+         WHERE i.token_hash = $1",
+    )
+    .bind(crypto::hash(token))
+    .fetch_optional(db)
+    .await?;
+    Ok(match row {
+        None => Invitation::Unknown,
+        Some(row) if row.consumed_at.is_some() => Invitation::Used,
+        Some(row) if row.expires_at <= now => Invitation::Expired,
+        Some(row) => Invitation::Valid { id: row.invitation_id, account: row.account },
+    })
+}
+
+/// Consomme l'invitation et active le compte ; `false` si elle a été utilisée entre-temps.
+pub async fn accept_invitation(db: &mut PgConnection, invitation: Uuid, account: Uuid, now: DateTime<Utc>) -> sqlx::Result<bool> {
+    let used = sqlx::query("UPDATE invitations SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL AND expires_at > $2")
+        .bind(invitation)
+        .bind(now)
+        .execute(&mut *db)
+        .await?;
+    if used.rows_affected() != 1 {
+        return Ok(false);
+    }
+    sqlx::query("UPDATE accounts SET status = 'active', activated_at = $2 WHERE id = $1")
+        .bind(account)
+        .bind(now)
+        .execute(&mut *db)
+        .await?;
+    Ok(true)
+}

@@ -7,6 +7,7 @@
 pub mod houses;
 pub mod login;
 pub mod session;
+pub mod webauthn;
 
 use askama::Template;
 use axum::{
@@ -26,9 +27,18 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/connexion", get(login::page))
         .route("/connexion/code", post(login::send_code))
         .route("/connexion/code/verifier", post(login::verify_code))
+        .route("/connexion/passkey/options", post(webauthn::login_options))
+        .route("/connexion/passkey/terminer", post(webauthn::login_finish))
+        .route("/invitation/{token}", get(webauthn::invitation_page))
+        .route("/invitation/{token}/options", post(webauthn::invitation_options))
+        .route("/invitation/{token}/terminer", post(webauthn::invitation_finish))
+        .route("/compte/passkeys/options", post(webauthn::account_options))
+        .route("/compte/passkeys/terminer", post(webauthn::account_finish))
+        .route("/compte/passkeys/{id}/retirer", post(webauthn::remove))
         .route("/deconnexion", post(login::logout))
         .route("/maisons", get(houses::page))
         .route("/static/portail.css", get(css))
+        .route("/static/webauthn.js", get(webauthn::script))
         .layer(middleware::from_fn_with_state(state, check_origin))
         .layer(middleware::from_fn(security_headers))
 }

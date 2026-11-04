@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Invitation{% endblock %}
+{% block head %}<script src="/static/webauthn.js" defer></script>{% endblock %}
+{% block content %}
+<section class="carte">
+  <h1>Bienvenue sur Agendo Access</h1>
+  <p>Cette invitation est destinée à <strong>{{ email }}</strong>. Créez une passkey pour activer
+    votre compte : elle remplace le mot de passe, et reste sur votre appareil (ou dans votre
+    trousseau).</p>
+  <label for="nom">Nom de cet appareil (facultatif)</label>
+  <input id="nom" data-webauthn-name maxlength="64" placeholder="iPhone, Mac du bureau…">
+  <button type="button" data-webauthn="register"
+          data-options="/invitation/{{ token }}/options"
+          data-finish="/invitation/{{ token }}/terminer">Créer ma passkey</button>
+  <p class="erreur" role="alert" data-webauthn-error hidden></p>
+</section>
+{% endblock %}

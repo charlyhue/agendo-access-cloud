@@ -119,3 +119,171 @@ pub async fn check_email_code(db: &PgPool, account: Uuid, code: &str, now: DateT
         .await?;
     Ok(consumed.rows_affected() == 1)
 }
+
+/// Validité d'un défi WebAuthn.
+pub const CHALLENGE_TTL: Duration = Duration::minutes(5);
+
+/// Usage d'un défi : une cérémonie ne peut pas en finir une autre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    RegisterInvitation,
+    RegisterAccount,
+    Login,
+}
+
+impl Purpose {
+    fn as_str(self) -> &'static str {
+        match self {
+            Purpose::RegisterInvitation => "register_invitation",
+            Purpose::RegisterAccount => "register_account",
+            Purpose::Login => "login",
+        }
+    }
+}
+
+/// Défi rattaché, selon l'usage, à un compte ou à une invitation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
+pub struct Challenge {
+    pub account_id: Option<Uuid>,
+    pub invitation_id: Option<Uuid>,
+}
+
+/// Nouveau défi de 32 octets, valable [`CHALLENGE_TTL`].
+pub async fn create_challenge(
+    db: impl PgExecutor<'_>,
+    purpose: Purpose,
+    owner: Challenge,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Vec<u8>> {
+    let challenge = crypto::random_bytes::<32>().to_vec();
+    sqlx::query(
+        "INSERT INTO webauthn_challenges (challenge, purpose, account_id, invitation_id, expires_at) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&challenge)
+    .bind(purpose.as_str())
+    .bind(owner.account_id)
+    .bind(owner.invitation_id)
+    .bind(now + CHALLENGE_TTL)
+    .execute(db)
+    .await?;
+    Ok(challenge)
+}
+
+/// Consomme un défi (usage unique) ; `None` s'il est inconnu, d'un autre usage ou expiré.
+pub async fn take_challenge(
+    db: impl PgExecutor<'_>,
+    challenge: &[u8],
+    purpose: Purpose,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Option<Challenge>> {
+    sqlx::query_as(
+        "DELETE FROM webauthn_challenges WHERE challenge = $1 AND purpose = $2 AND expires_at > $3
+         RETURNING account_id, invitation_id",
+    )
+    .bind(challenge)
+    .bind(purpose.as_str())
+    .bind(now)
+    .fetch_optional(db)
+    .await
+}
+
+/// Passkey enregistrée.
+#[derive(Debug, Clone, FromRow)]
+pub struct Passkey {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub credential_id: Vec<u8>,
+    pub public_key: Vec<u8>,
+    pub algorithm: i64,
+    pub sign_count: i64,
+    pub backup_eligible: bool,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+macro_rules! passkey_columns {
+    () => {
+        "id, account_id, credential_id, public_key, algorithm, sign_count, backup_eligible, name, created_at, last_used_at"
+    };
+}
+
+/// Range une passkey vérifiée ; `false` si cet identifiant est déjà enregistré.
+pub async fn insert_passkey(
+    db: impl PgExecutor<'_>,
+    account: Uuid,
+    credential: &agendo_webauthn::NewCredential,
+    name: &str,
+    now: DateTime<Utc>,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query(
+        "INSERT INTO passkeys (id, account_id, credential_id, public_key, algorithm, sign_count, backup_eligible,
+                               transports, name, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (credential_id) DO NOTHING",
+    )
+    .bind(Uuid::new_v4())
+    .bind(account)
+    .bind(&credential.id)
+    .bind(&credential.public_key)
+    .bind(credential.algorithm)
+    .bind(i64::from(credential.sign_count))
+    .bind(credential.backup_eligible)
+    .bind(&credential.transports)
+    .bind(name)
+    .bind(now)
+    .execute(db)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+pub async fn passkey_by_credential(db: impl PgExecutor<'_>, credential_id: &[u8]) -> sqlx::Result<Option<Passkey>> {
+    sqlx::query_as(concat!("SELECT ", passkey_columns!(), " FROM passkeys WHERE credential_id = $1"))
+        .bind(credential_id)
+        .fetch_optional(db)
+        .await
+}
+
+pub async fn passkeys_of(db: impl PgExecutor<'_>, account: Uuid) -> sqlx::Result<Vec<Passkey>> {
+    sqlx::query_as(concat!("SELECT ", passkey_columns!(), " FROM passkeys WHERE account_id = $1 ORDER BY created_at, name"))
+        .bind(account)
+        .fetch_all(db)
+        .await
+}
+
+/// Note une authentification réussie (nouveau compteur, date).
+pub async fn passkey_used(db: impl PgExecutor<'_>, id: Uuid, sign_count: u32, now: DateTime<Utc>) -> sqlx::Result<()> {
+    sqlx::query("UPDATE passkeys SET sign_count = $2, last_used_at = $3 WHERE id = $1")
+        .bind(id)
+        .bind(i64::from(sign_count))
+        .bind(now)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Issue du retrait d'une passkey.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Removal {
+    Removed,
+    NotFound,
+    /// La dernière passkey du compte reste.
+    LastOne,
+}
+
+pub async fn remove_passkey(db: &PgPool, account: Uuid, id: Uuid) -> sqlx::Result<Removal> {
+    let mut tx = db.begin().await?;
+    // Verrou sur les passkeys du compte : deux retraits simultanés ne laissent pas zéro passkey.
+    let ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM passkeys WHERE account_id = $1 FOR UPDATE")
+        .bind(account)
+        .fetch_all(&mut *tx)
+        .await?;
+    if !ids.contains(&id) {
+        return Ok(Removal::NotFound);
+    }
+    if ids.len() == 1 {
+        return Ok(Removal::LastOne);
+    }
+    sqlx::query("DELETE FROM passkeys WHERE id = $1").bind(id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Removal::Removed)
+}
