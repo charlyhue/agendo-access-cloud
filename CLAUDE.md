@@ -6,6 +6,18 @@ Plan de contrôle et portail d'Agendo Access. La spec fait foi :
 **[à trancher]** se proposent à la personne, ils ne se décident pas seul : prendre le choix par
 défaut indiqué, le signaler, et le lister dans la PR.
 
+## Commandes
+
+- Rust est installé via rustup : si `cargo` est introuvable, `. ~/.cargo/env`.
+- `scripts/test.sh [args cargo test]` : démarre le PostgreSQL de test (`scripts/db.sh up`,
+  conteneur Docker `postgres:17-alpine` sur `127.0.0.1:54340`, sans mot de passe, données en
+  `tmpfs`) puis `cargo test` avec `DATABASE_URL`. Chaque `#[sqlx::test]` reçoit sa base
+  jetable, migrations appliquées. `scripts/db.sh down` arrête le conteneur.
+- `cargo clippy --all-targets -- -D warnings` : doit rester sans warning.
+- `cargo deny check` : licences, avis de sécurité, sources (`deny.toml`).
+- Requêtes SQL à l'exécution (`sqlx::query`, `query_as`), jamais les macros `query!` : la
+  compilation ne demande pas de base.
+
 ## Règles
 
 - Tout est en français : messages de log, commentaires, docs, textes du portail, e-mails.
