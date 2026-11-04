@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · Agendo Access</title>
+  <link rel="stylesheet" href="/static/portail.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="entete">
+    <a class="marque" href="/">Agendo Access</a>
+    {% if connected %}
+    <nav>
+      <a href="/maisons">Maisons</a>
+      <a href="/compte">Compte</a>
+      <form method="post" action="/deconnexion"><button class="lien" type="submit">Se déconnecter</button></form>
+    </nav>
+    {% endif %}
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

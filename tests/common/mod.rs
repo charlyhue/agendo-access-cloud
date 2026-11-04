@@ -79,8 +79,13 @@ pub struct TestRequest<'a> {
 }
 
 impl TestRequest<'_> {
+    /// Pose l'en-tête `name`, en remplaçant une valeur déjà posée (l'`Origin` par défaut).
     pub fn header(mut self, name: &str, value: &str) -> Self {
-        self.builder = self.builder.header(name, value);
+        let headers = self.builder.headers_mut().expect("requête valide");
+        headers.insert(
+            axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+            axum::http::HeaderValue::from_str(value).unwrap(),
+        );
         self
     }
 
@@ -161,4 +166,38 @@ impl TestResponse {
             .filter_map(|v| v.to_str().ok())
             .find_map(|v| v.strip_prefix(&prefix).map(|rest| rest.split(';').next().unwrap_or("").to_owned()))
     }
+}
+
+/// Compte actif créé directement en base (sans passer par l'invitation).
+pub async fn active_account(app: &TestApp, email: &str) -> uuid::Uuid {
+    let id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO accounts (id, email, status, subscription_active, subscription_source, webauthn_user_id, created_at, activated_at)
+         VALUES ($1, $2, 'active', true, 'manual', $3, $4, $4)",
+    )
+    .bind(id)
+    .bind(email)
+    .bind(id.as_bytes().to_vec())
+    .bind(start())
+    .execute(&app.state.db)
+    .await
+    .unwrap();
+    id
+}
+
+/// Code à 6 chiffres du dernier e-mail envoyé.
+pub fn last_code(app: &TestApp) -> String {
+    let mail = app.mailer.sent().pop().expect("un e-mail");
+    let start = mail.text.find(" : ").expect("code dans l'e-mail") + 3;
+    mail.text[start..start + 6].to_owned()
+}
+
+/// Connexion par code e-mail ; rend le jeton de session.
+pub async fn login(app: &TestApp, email: &str) -> String {
+    let r = app.request(Method::POST, "/connexion/code").form(&[("email", email)]).send().await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let code = last_code(app);
+    let r = app.request(Method::POST, "/connexion/code/verifier").form(&[("email", email), ("code", &code)]).send().await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.text());
+    r.session_cookie().expect("cookie de session")
 }

@@ -11,6 +11,7 @@ pub mod db;
 pub mod dns;
 pub mod http;
 pub mod mail;
+pub mod net;
 pub mod portal;
 pub mod signing;
 pub mod state;
@@ -23,7 +24,10 @@ pub use state::AppState;
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
 pub fn app(state: AppState) -> Router {
-    Router::new().route("/healthz", get(health)).with_state(state)
+    Router::new()
+        .route("/healthz", get(health))
+        .merge(portal::routes(state.clone()))
+        .with_state(state)
 }
 
 /// Vivacité : répond si la base répond.
