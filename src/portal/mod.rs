@@ -4,6 +4,7 @@
 //! WebAuthn. Toute requête qui n'est pas un GET doit venir de l'origine du portail (défense
 //! CSRF en plus du cookie `SameSite=Lax`).
 
+pub mod account;
 pub mod houses;
 pub mod login;
 pub mod session;
@@ -32,6 +33,10 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/invitation/{token}", get(webauthn::invitation_page))
         .route("/invitation/{token}/options", post(webauthn::invitation_options))
         .route("/invitation/{token}/terminer", post(webauthn::invitation_finish))
+        .route("/compte", get(account::page))
+        .route("/compte/export", get(account::export))
+        .route("/compte/supprimer", post(account::delete))
+        .route("/compte/sessions/{id}/revoquer", post(account::revoke_session))
         .route("/compte/passkeys/options", post(webauthn::account_options))
         .route("/compte/passkeys/terminer", post(webauthn::account_finish))
         .route("/compte/passkeys/{id}/retirer", post(webauthn::remove))

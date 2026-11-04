@@ -242,3 +242,28 @@ pub async fn passkey_login(app: &TestApp, authenticator: &mut agendo_webauthn::s
     let credential = authenticator.assert(RP_ID, ORIGIN, &challenge);
     app.request(Method::POST, "/connexion/passkey/terminer").json(&serde_json::json!({"credential": credential})).send().await
 }
+
+/// Maison rattachée directement en base au compte (étiquette `label`, clé de graine `seed`).
+pub async fn insert_house(app: &TestApp, account: uuid::Uuid, label: &str, seed: u8) -> uuid::Uuid {
+    use agendo_access_protocol::{SigningKey, keys::encode_public_key};
+    let id = uuid::Uuid::new_v4();
+    let key = encode_public_key(&SigningKey::from_bytes(&[seed; 32]).verifying_key());
+    sqlx::query(
+        "INSERT INTO houses (id, account_id, label, host, name, public_key, enrolled_at) VALUES ($1, $2, $3, $4, 'Maison', $5, $6)",
+    )
+    .bind(id)
+    .bind(account)
+    .bind(label)
+    .bind(format!("{label}.maisons.exemple.fr"))
+    .bind(key)
+    .bind(start())
+    .execute(&app.state.db)
+    .await
+    .unwrap();
+    id
+}
+
+/// Identifiant du compte de cette adresse.
+pub async fn account_id(app: &TestApp, email: &str) -> uuid::Uuid {
+    sqlx::query_scalar("SELECT id FROM accounts WHERE email = $1").bind(email).fetch_one(&app.state.db).await.unwrap()
+}
