@@ -3,11 +3,13 @@
 //! Un seul serveur axum : l'API des maisons (`/v1/*`, `/.well-known/agendo-access/*`) et le
 //! portail (tout le reste). Sans état hors de PostgreSQL : deux instances peuvent tourner.
 
+pub mod admin;
 pub mod clock;
 pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod dns;
+pub mod http;
 pub mod mail;
 pub mod portal;
 pub mod signing;
