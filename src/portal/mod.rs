@@ -71,7 +71,10 @@ async fn security_headers(request: Request, next: Next) -> Response {
          form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
     );
     set(headers, header::X_CONTENT_TYPE_OPTIONS, "nosniff");
-    set(headers, header::REFERRER_POLICY, "no-referrer");
+    // `same-origin` et non `no-referrer` : avec `no-referrer`, le navigateur envoie
+    // `Origin: null` sur les formulaires (standard Fetch), que `check_origin` refuserait. Aucune
+    // ressource tierce n'est chargée : le jeton d'une URL d'invitation ne sort pas du portail.
+    set(headers, header::REFERRER_POLICY, "same-origin");
     set(headers, header::CACHE_CONTROL, "no-store");
     set(headers, header::X_FRAME_OPTIONS, "DENY");
     response

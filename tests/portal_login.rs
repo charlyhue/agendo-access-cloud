@@ -174,7 +174,8 @@ async fn security_headers_present(pool: PgPool) {
     let csp = r.headers.get("content-security-policy").unwrap().to_str().unwrap();
     assert!(csp.contains("script-src 'self'") && csp.contains("frame-ancestors 'none'"), "{csp}");
     assert_eq!(r.headers.get("x-content-type-options").unwrap(), "nosniff");
-    assert_eq!(r.headers.get("referrer-policy").unwrap(), "no-referrer");
+    // `no-referrer` ferait partir les formulaires avec `Origin: null` (standard Fetch) : refusés.
+    assert_eq!(r.headers.get("referrer-policy").unwrap(), "same-origin");
     assert_eq!(r.headers.get("cache-control").unwrap(), "no-store");
     let css = app.get("/static/portail.css").await;
     assert_eq!(css.status, StatusCode::OK);
