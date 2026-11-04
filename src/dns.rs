@@ -41,3 +41,102 @@ impl DnsProvider for FakeDns {
         Ok(())
     }
 }
+
+/// Cloudflare DNS (API v4) : enregistrements TXT de la zone `zone_id`, jeton d'API limité à
+/// « DNS : modifier » sur cette zone. Une erreur ne cite que le statut et les codes d'erreur.
+pub struct CloudflareDns {
+    client: reqwest::Client,
+    records_url: String,
+    token: String,
+}
+
+#[derive(serde::Deserialize)]
+struct CfResponse {
+    #[serde(default)]
+    success: bool,
+    #[serde(default)]
+    errors: Vec<CfError>,
+    #[serde(default)]
+    result: serde_json::Value,
+}
+
+#[derive(serde::Deserialize)]
+struct CfError {
+    code: i64,
+}
+
+#[derive(serde::Deserialize)]
+struct CfRecord {
+    id: String,
+    content: String,
+}
+
+/// Code Cloudflare « un enregistrement identique existe déjà ».
+const CF_IDENTICAL_RECORD: i64 = 81058;
+
+impl CloudflareDns {
+    pub fn new(api_url: &str, token: String, zone_id: String) -> Self {
+        let records_url = format!("{}/zones/{zone_id}/dns_records", api_url.trim_end_matches('/'));
+        Self { client: crate::http::client(), records_url, token }
+    }
+
+    async fn call(&self, request: reqwest::RequestBuilder) -> anyhow::Result<CfResponse> {
+        let response = request
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Cloudflare injoignable : {}", e.without_url()))?;
+        let status = response.status();
+        let body: CfResponse = response.json().await.unwrap_or(CfResponse { success: false, errors: Vec::new(), result: Default::default() });
+        if !status.is_success() || !body.success {
+            let codes: Vec<String> = body.errors.iter().map(|e| e.code.to_string()).collect();
+            anyhow::bail!("Cloudflare refuse la requête (statut {}, codes {})", status.as_u16(), codes.join(","));
+        }
+        Ok(body)
+    }
+}
+
+#[async_trait]
+impl DnsProvider for CloudflareDns {
+    async fn put_txt(&self, name: &str, value: &str) -> anyhow::Result<()> {
+        let body = serde_json::json!({ "type": "TXT", "name": name, "content": value, "ttl": 60 });
+        match self.call(self.client.post(&self.records_url).json(&body)).await {
+            Ok(_) => Ok(()),
+            // Nouvel essai de la maison : l'enregistrement est déjà là.
+            Err(e) if e.to_string().contains(&CF_IDENTICAL_RECORD.to_string()) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn delete_txt(&self, name: &str, value: &str) -> anyhow::Result<()> {
+        let query = [("type", "TXT"), ("name", name), ("per_page", "100")];
+        let listed = self.call(self.client.get(&self.records_url).query(&query)).await?;
+        let records: Vec<CfRecord> = serde_json::from_value(listed.result).unwrap_or_default();
+        for record in records.iter().filter(|r| r.content.trim_matches('"') == value) {
+            self.call(self.client.delete(format!("{}/{}", self.records_url, record.id))).await?;
+        }
+        Ok(())
+    }
+}
+
+/// Fournisseur selon `AGENDO_CLOUD_DNS` : `cloudflare` (production) ou `fake` (développement,
+/// rien n'est publié).
+pub fn from_env(vars: &dyn crate::config::Vars) -> Result<std::sync::Arc<dyn DnsProvider>, crate::config::ConfigError> {
+    use crate::config::{ConfigError, read_secret_file};
+    match vars.required("AGENDO_CLOUD_DNS")?.as_str() {
+        "cloudflare" => {
+            let api_url = vars
+                .var("AGENDO_CLOUD_CLOUDFLARE_API_URL")
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "https://api.cloudflare.com/client/v4".into());
+            let token = read_secret_file(vars, "AGENDO_CLOUD_CLOUDFLARE_TOKEN_FILE")?;
+            let zone = vars.required("AGENDO_CLOUD_CLOUDFLARE_ZONE_ID")?;
+            Ok(std::sync::Arc::new(CloudflareDns::new(api_url.trim(), token, zone)))
+        }
+        "fake" => {
+            tracing::warn!("fournisseur DNS factice : aucun défi ACME ne sera publié");
+            Ok(std::sync::Arc::new(FakeDns::default()))
+        }
+        other => Err(ConfigError::Invalid { name: "AGENDO_CLOUD_DNS".into(), reason: format!("{other:?} : cloudflare ou fake attendu") }),
+    }
+}

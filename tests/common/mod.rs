@@ -3,6 +3,9 @@
 
 use std::sync::Arc;
 
+#[allow(unused_imports)]
+pub use agendo_access_cloud::clock::Clock;
+
 use agendo_access_cloud::{
     AppState, app,
     clock::ManualClock,
@@ -289,4 +292,32 @@ pub async fn enroll(app: &TestApp, code: &str, seed: u8, name: &str) -> TestResp
         .json(&serde_json::json!({"code": code, "house_key": key, "name": name}))
         .send()
         .await
+}
+
+/// Maison rattachée de bout en bout (invitation, passkey, code, enroll) avec la clé de
+/// graine `seed` ; rend la réponse du rattachement, la clé et la session du compte.
+pub async fn enrolled_house(app: &TestApp, email: &str, seed: u8) -> (agendo_access_protocol::api::EnrollResponse, agendo_access_protocol::SigningKey, String) {
+    let (session, _) = onboard(app, email, seed).await;
+    let code = enrollment_code(app, &session).await;
+    let r = enroll(app, &code, seed, "Maison").await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    (serde_json::from_slice(&r.body).unwrap(), agendo_access_protocol::SigningKey::from_bytes(&[seed; 32]), session)
+}
+
+/// Requête signée par la maison (`Agendo-House`, `Agendo-Signature` à l'instant `t`).
+pub async fn signed(
+    app: &TestApp,
+    method: Method,
+    path: &str,
+    body: &[u8],
+    house_id: &str,
+    key: &agendo_access_protocol::SigningKey,
+    t: i64,
+) -> TestResponse {
+    let signature = agendo_access_protocol::signature::sign_request(key, method.as_str(), path, body, t);
+    let mut request = app.request(method, path).header("agendo-house", house_id).header("agendo-signature", &signature);
+    if !body.is_empty() {
+        request = request.header("content-type", "application/json");
+    }
+    request.bytes(body.to_vec()).send().await
 }

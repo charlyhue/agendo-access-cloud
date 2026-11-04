@@ -17,7 +17,16 @@ pub mod portal;
 pub mod signing;
 pub mod state;
 
-use axum::{Router, extract::State, http::StatusCode, routing::get};
+use std::time::Instant;
+
+use axum::{
+    Router,
+    extract::{MatchedPath, Request, State},
+    http::StatusCode,
+    middleware::{self, Next},
+    response::Response,
+    routing::get,
+};
 
 pub use state::AppState;
 
@@ -29,6 +38,7 @@ pub fn app(state: AppState) -> Router {
         .route("/healthz", get(health))
         .merge(api::routes())
         .merge(portal::routes(state.clone()))
+        .route_layer(middleware::from_fn(log_request))
         .with_state(state)
 }
 
@@ -39,4 +49,19 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
         StatusCode::SERVICE_UNAVAILABLE
     })?;
     Ok("ok")
+}
+
+/// Journal des requêtes : la route (`/invitation/{token}`), jamais l'URI, qui peut porter un
+/// secret (lien d'invitation) ; ni requête, ni corps, ni en-tête.
+async fn log_request(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let route = request.extensions().get::<MatchedPath>().map(|p| p.as_str().to_owned()).unwrap_or_default();
+    let start = Instant::now();
+    let response = next.run(request).await;
+    let status = response.status().as_u16();
+    let duration_ms = start.elapsed().as_millis() as u64;
+    if route != "/healthz" {
+        tracing::info!(methode = %method, route = %route, statut = status, duree_ms = duration_ms, "requête");
+    }
+    response
 }

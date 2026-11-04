@@ -15,7 +15,7 @@ use uuid::Uuid;
 use super::{PortalError, render, session::{self, CurrentAccount}};
 use crate::{
     AppState,
-    db::{accounts, audit, auth},
+    db::{accounts, audit, auth, houses},
 };
 
 /// Date lisible des pages (UTC).
@@ -136,16 +136,11 @@ pub async fn export(State(state): State<AppState>, current: CurrentAccount) -> R
         .map(|s| json!({ "navigateur": s.user_agent, "creee_le": s.created_at, "expire_le": s.expires_at,
                          "derniere_activite": s.last_seen_at, "revoquee_le": s.revoked_at }))
         .collect();
-    let houses: Vec<(String, String, DateTime<Utc>, Option<DateTime<Utc>>, Option<DateTime<Utc>>)> = sqlx::query_as(
-        "SELECT name, host, enrolled_at, revoked_at, last_token_at FROM houses WHERE account_id = $1 ORDER BY enrolled_at",
-    )
-    .bind(account.id)
-    .fetch_all(&state.db)
-    .await?;
-    let houses: Vec<_> = houses
+    let houses: Vec<_> = houses::of_account(&state.db, account.id)
+        .await?
         .into_iter()
-        .map(|(name, host, enrolled, revoked, last)| json!({ "nom": name, "nom_hote": host, "rattachee_le": enrolled,
-                                                             "revoquee_le": revoked, "dernier_jeton_le": last }))
+        .map(|h| json!({ "nom": h.name, "nom_hote": h.host, "rattachee_le": h.enrolled_at,
+                         "revoquee_le": h.revoked_at, "dernier_jeton_le": h.last_token_at }))
         .collect();
     let journal: Vec<(DateTime<Utc>, String, serde_json::Value)> =
         sqlx::query_as("SELECT at, event, detail FROM audit WHERE account_id = $1 ORDER BY id")

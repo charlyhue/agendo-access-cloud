@@ -3,8 +3,9 @@
 //! Tout refus porte un corps [`Refusal`] du protocole, que la maison montre à la personne.
 
 pub mod enroll;
+pub mod signed;
 
-use agendo_access_protocol::api::{ENROLL_PATH, KEYS_PATH, KeysResponse, Refusal, RefusalReason};
+use agendo_access_protocol::api::{ACME_PATH, ENROLL_PATH, KEYS_PATH, TOKENS_PATH, KeysResponse, Refusal, RefusalReason};
 use axum::{
     Json, Router,
     extract::State,
@@ -16,7 +17,11 @@ use axum::{
 use crate::AppState;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route(KEYS_PATH, get(keys)).route(ENROLL_PATH, post(enroll::enroll))
+    Router::new()
+        .route(KEYS_PATH, get(keys))
+        .route(ENROLL_PATH, post(enroll::enroll))
+        .route(TOKENS_PATH, post(signed::tokens))
+        .route(ACME_PATH, post(signed::acme_put).delete(signed::acme_delete))
 }
 
 /// Clés publiques de confiance du plan de contrôle.
