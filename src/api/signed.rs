@@ -169,7 +169,11 @@ fn acme_value(body: &[u8]) -> Result<String, ApiError> {
 
 async fn acme(state: AppState, signed: SignedHouse, put: bool) -> Result<StatusCode, ApiError> {
     let house = signed.house;
-    check_service(&state, &house).await?;
+    // Poser exige le service ; retirer reste permis à une maison révoquée ou suspendue, pour
+    // qu'elle nettoie ses défis.
+    if put {
+        check_service(&state, &house).await?;
+    }
     let value = acme_value(&signed.body)?;
     let name = format!("_acme-challenge.{}", house.host);
     let result = if put { state.dns.put_txt(&name, &value).await } else { state.dns.delete_txt(&name, &value).await };

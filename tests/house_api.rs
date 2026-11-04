@@ -202,3 +202,21 @@ async fn tokens_without_house_header(pool: PgPool) {
     let r = brick_style(&app, Method::POST, TOKENS_PATH, b"", &first_key).await;
     assert_eq!((r.status, reason(&r).as_str()), (StatusCode::FORBIDDEN, "revoked"));
 }
+
+#[sqlx::test]
+async fn acme_keeps_two_values_and_revoked_house_can_clear(pool: PgPool) {
+    let app = TestApp::new(pool);
+    let (house, key, _) = enrolled_house(&app, "alice@exemple.fr", 2).await;
+    let body = |v: &str| serde_json::to_vec(&serde_json::json!({"value": v})).unwrap();
+    for value in ["v1", "v2", "v3"] {
+        assert_eq!(acme(&app, Method::POST, &house.house_id, &key, &body(value)).await.status, StatusCode::NO_CONTENT);
+    }
+    let name = format!("_acme-challenge.{}", house.host);
+    // Au plus deux valeurs par nom (DNS-01 n'en demande jamais plus) : la plus ancienne part.
+    assert_eq!(app.dns.records(), [(name.clone(), "v2".to_owned()), (name.clone(), "v3".to_owned())]);
+    // Une maison révoquée peut encore retirer ses TXT, pas en poser.
+    admin::revoke_house(&app.state, &house.host).await.unwrap();
+    assert_eq!(acme(&app, Method::POST, &house.house_id, &key, &body("v4")).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(acme(&app, Method::DELETE, &house.house_id, &key, &body("v2")).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(app.dns.records(), [(name, "v3".to_owned())]);
+}

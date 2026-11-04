@@ -44,7 +44,12 @@ async fn fake_cloudflare() -> (String, Shared) {
                     .iter()
                     .filter(|(_, n, _)| *n == name)
                     // Cloudflare rend le contenu TXT entre guillemets.
-                    .map(|(id, n, c)| json!({"id": id, "type": "TXT", "name": n, "content": format!("\"{c}\"")}))
+                    .map(|(id, n, c)| {
+                        let created = format!("2026-11-04T12:00:{:02}Z", id[1..].parse::<u32>().unwrap());
+                        json!({"id": id, "type": "TXT", "name": n, "content": format!("\"{c}\""), "created_on": created})
+                    })
+                    // L'API ne promet pas d'ordre : on les rend du plus récent au plus ancien.
+                    .rev()
                     .collect();
                 (StatusCode::OK, Json(json!({"success": true, "result": result})))
             })
@@ -97,6 +102,11 @@ async fn cloudflare_put_delete() {
     let left: Vec<String> = zone.lock().unwrap().records.iter().map(|r| r.2.clone()).collect();
     assert_eq!(left, ["valeur-2"]);
     dns.delete_txt(name, "absente").await.unwrap();
+    // Au plus deux valeurs par nom : la plus ancienne est retirée.
+    dns.put_txt(name, "valeur-3").await.unwrap();
+    dns.put_txt(name, "valeur-4").await.unwrap();
+    let left: Vec<String> = zone.lock().unwrap().records.iter().map(|r| r.2.clone()).collect();
+    assert_eq!(left, ["valeur-3", "valeur-4"]);
     assert_eq!(zone.lock().unwrap().bad_auth, 0);
 }
 

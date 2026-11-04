@@ -7,9 +7,15 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
+/// Valeurs TXT gardées par nom : un défi DNS-01 n'en demande jamais plus de deux à la fois.
+/// Au-delà, les plus anciennes sont retirées, pour qu'une maison (ou sa clé volée) ne puisse
+/// pas remplir la zone, et qu'un défi abandonné ne reste pas.
+pub const MAX_TXT_VALUES: usize = 2;
+
 #[async_trait]
 pub trait DnsProvider: Send + Sync {
-    /// Pose un enregistrement TXT `name` de valeur `value` (nom complet, sans point final).
+    /// Pose un enregistrement TXT `name` de valeur `value` (nom complet, sans point final), en
+    /// ne gardant que les [`MAX_TXT_VALUES`] plus récentes valeurs de ce nom.
     async fn put_txt(&self, name: &str, value: &str) -> anyhow::Result<()>;
     /// Retire l'enregistrement TXT `name` de valeur `value` ; absent, ce n'est pas une erreur.
     async fn delete_txt(&self, name: &str, value: &str) -> anyhow::Result<()>;
@@ -30,9 +36,16 @@ impl DnsProvider for FakeDns {
     async fn put_txt(&self, name: &str, value: &str) -> anyhow::Result<()> {
         let mut records = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let record = (name.to_owned(), value.to_owned());
-        if !records.contains(&record) {
-            records.push(record);
+        if records.contains(&record) {
+            return Ok(());
         }
+        // Les plus anciennes valeurs du nom au-delà de la borne partent.
+        let same: Vec<usize> = records.iter().enumerate().filter(|(_, (n, _))| n == name).map(|(i, _)| i).collect();
+        let excess = (same.len() + 1).saturating_sub(MAX_TXT_VALUES);
+        for i in same.into_iter().take(excess).rev() {
+            records.remove(i);
+        }
+        records.push(record);
         Ok(())
     }
 
@@ -69,6 +82,8 @@ struct CfError {
 struct CfRecord {
     id: String,
     content: String,
+    #[serde(default)]
+    created_on: String,
 }
 
 /// Code Cloudflare « un enregistrement identique existe déjà ».
@@ -78,6 +93,19 @@ impl CloudflareDns {
     pub fn new(api_url: &str, token: String, zone_id: String) -> Self {
         let records_url = format!("{}/zones/{zone_id}/dns_records", api_url.trim_end_matches('/'));
         Self { client: crate::http::client(), records_url, token }
+    }
+
+    /// TXT du nom, du plus ancien au plus récent (dates RFC 3339 : l'ordre du texte suffit).
+    async fn list(&self, name: &str) -> anyhow::Result<Vec<CfRecord>> {
+        let query = [("type", "TXT"), ("name", name), ("per_page", "100")];
+        let listed = self.call(self.client.get(&self.records_url).query(&query)).await?;
+        let mut records: Vec<CfRecord> = serde_json::from_value(listed.result).unwrap_or_default();
+        records.sort_by(|a, b| a.created_on.cmp(&b.created_on));
+        Ok(records)
+    }
+
+    async fn delete(&self, record: &CfRecord) -> anyhow::Result<()> {
+        self.call(self.client.delete(format!("{}/{}", self.records_url, record.id))).await.map(drop)
     }
 
     async fn call(&self, request: reqwest::RequestBuilder) -> anyhow::Result<CfResponse> {
@@ -99,6 +127,14 @@ impl CloudflareDns {
 #[async_trait]
 impl DnsProvider for CloudflareDns {
     async fn put_txt(&self, name: &str, value: &str) -> anyhow::Result<()> {
+        let existing = self.list(name).await?;
+        if existing.iter().any(|r| r.content.trim_matches('"') == value) {
+            return Ok(());
+        }
+        let excess = (existing.len() + 1).saturating_sub(MAX_TXT_VALUES);
+        for record in existing.iter().take(excess) {
+            self.delete(record).await?;
+        }
         let body = serde_json::json!({ "type": "TXT", "name": name, "content": value, "ttl": 60 });
         match self.call(self.client.post(&self.records_url).json(&body)).await {
             Ok(_) => Ok(()),
@@ -109,11 +145,8 @@ impl DnsProvider for CloudflareDns {
     }
 
     async fn delete_txt(&self, name: &str, value: &str) -> anyhow::Result<()> {
-        let query = [("type", "TXT"), ("name", name), ("per_page", "100")];
-        let listed = self.call(self.client.get(&self.records_url).query(&query)).await?;
-        let records: Vec<CfRecord> = serde_json::from_value(listed.result).unwrap_or_default();
-        for record in records.iter().filter(|r| r.content.trim_matches('"') == value) {
-            self.call(self.client.delete(format!("{}/{}", self.records_url, record.id))).await?;
+        for record in self.list(name).await?.iter().filter(|r| r.content.trim_matches('"') == value) {
+            self.delete(record).await?;
         }
         Ok(())
     }
