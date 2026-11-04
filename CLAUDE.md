@@ -28,6 +28,9 @@ défaut indiqué, le signaler, et le lister dans la PR.
 - Configuration par variables d'environnement uniquement. **Aucun domaine en dur** (ni le
   nôtre, ni celui d'une maison) et aucun seuil anti-abus en dur : tout ce qui est propre au
   déploiement passe par la configuration (`docs/deploy.md` liste les variables).
+  Les domaines (temporaires) de la personne n'apparaissent que dans les exemples :
+  `deploy/exemple.env` et `docs/deploy.md`. Jamais dans `src/`, les gabarits ni les tests, qui
+  gardent `exemple.fr` ; `tests/example_config.rs` le vérifie.
 - Le code s'écrit **comme s'il était public** : `cargo-deny` en CI, pas d'`unwrap` sur une
   donnée venue du réseau.
 - Pas d'inscription publique : un compte naît d'une invitation (`admin invite`). Aucun mot de

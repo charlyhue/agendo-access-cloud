@@ -23,7 +23,8 @@ Rust (axum, sqlx et ses migrations), PostgreSQL. Le protocole commun (`agendo-ac
 et la vérification WebAuthn (`agendo-webauthn`) viennent du dépôt `charlyhue/agendo` par Git.
 
 Les conventions de travail sont dans [CLAUDE.md](CLAUDE.md), le déploiement dans
-`docs/deploy.md`.
+`docs/deploy.md` (domaines et DNS compris), la configuration d'exemple dans
+`deploy/exemple.env`.
 
 ## Démarrer
 
