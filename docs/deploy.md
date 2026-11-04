@@ -26,61 +26,57 @@ renvoie aux maisons (rattachement, renouvellement des jetons) : en V1, seulement
 Ajouter un relais = le déployer, ajouter son nom aux enregistrements ci-dessous, puis à la
 liste ; les maisons le prennent à leur prochain renouvellement (6 h au plus).
 
-### Enregistrements
+### Enregistrements (V1 : tout dans la zone Cloudflare `charly-hue.fr`)
 
-Dans la zone parente `charly-hue.fr` (là où elle est hébergée aujourd'hui) :
-
-```text
-agendo-api       A/AAAA  <IP du VPS Dokploy>
-agendo-account   A/AAAA  <IP du VPS Dokploy>
-agendo-relay-1   A/AAAA  <IP du relais 1>     # le VPS Dokploy en V1
-agendo-push-1    A/AAAA  <IP du relais push 1>
-agendo           NS      <serveurs de noms de la sous-zone>   # délégation, voir plus bas
-```
-
-Dans la sous-zone déléguée `agendo.charly-hue.fr` :
+Choix de la personne pour la V1 (trois maisons, domaine temporaire) : **pas de délégation**,
+tout vit dans la zone Cloudflare `charly-hue.fr`. Tous les enregistrements sont en
+**« DNS only » (nuage gris)**. Proxifié par Cloudflare, un nom verrait son TLS terminé chez
+Cloudflare : le relais SNI ne verrait plus le ClientHello des maisons, le certificat de la
+maison ne servirait plus, et `X-Forwarded-For` donnerait l'IP de Cloudflare au lieu de celle du
+client.
 
 ```text
-*                A/AAAA  <IP de chaque relais SNI>   # une ligne par relais : le joker vers tous
-@                CAA     0 issue "letsencrypt.org"   # recommandé : seul Let's Encrypt émet
+agendo-api       A/AAAA  <IP du VPS Dokploy>        DNS only
+agendo-account   A/AAAA  <IP du VPS Dokploy>        DNS only
+agendo-relay-1   A/AAAA  <IP du relais 1>           DNS only   # le VPS Dokploy en V1
+agendo-push-1    A/AAAA  <IP du relais push 1>      DNS only
+*.agendo         A/AAAA  <IP de chaque relais SNI>  DNS only   # une ligne par relais : le joker vers tous
 ```
 
-Le plan de contrôle y pose et retire lui-même les TXT `_acme-challenge.<id>` des certificats
-des maisons (deux valeurs au plus par nom).
+Le plan de contrôle pose et retire lui-même les TXT `_acme-challenge.<id>.agendo` des
+certificats des maisons (deux valeurs au plus par nom).
 
-### Délégation de `agendo.charly-hue.fr`
+**Jeton d'API Cloudflare** (*My Profile* → *API Tokens* → *Create Token*, modèle « Edit zone
+DNS ») : permission *Zone → DNS → Edit*, ressource *Specific zone → charly-hue.fr*, rien
+d'autre. On peut en plus le limiter aux IP du VPS (*Client IP Address Filtering*). Il va en
+*File Mount* (section 3) ; `AGENDO_CLOUD_CLOUDFLARE_ZONE_ID` est l'identifiant de la zone
+`charly-hue.fr` (page *Overview* de la zone).
 
-But : le jeton d'API du `DnsProvider` n'a de droits que sur la sous-zone des maisons. Un plan
-de contrôle compromis peut alors faire émettre des certificats pour `*.agendo.charly-hue.fr`,
-jamais pour le reste de `charly-hue.fr` (site, courrier, autres projets).
-
-1. Créer la zone `agendo.charly-hue.fr` chez le fournisseur choisi pour elle ; il donne ses
-   serveurs de noms.
-2. Y créer le joker et le CAA ci-dessus.
-3. Dans la zone `charly-hue.fr` : un enregistrement `NS` par serveur de noms de la sous-zone,
-   sur le nom `agendo`. Si `charly-hue.fr` est signée (DNSSEC) et la sous-zone aussi, ajouter
-   l'enregistrement `DS` qu'elle fournit ; sinon, la sous-zone reste non signée.
-4. Vérifier : `dig NS agendo.charly-hue.fr +trace` montre la délégation, et
-   `dig A test.agendo.charly-hue.fr` rend l'IP du relais.
-5. Créer un jeton d'API limité à cette seule zone (droits : lire et modifier les
-   enregistrements), en *File Mount* (section 3).
-
-**[à trancher] Fournisseur de la sous-zone.** Cloudflare, la seule implémentation réelle de
-`DnsProvider` aujourd'hui, n'accepte une sous-zone déléguée (« subdomain setup ») qu'avec
-l'offre **Enterprise**. Deux voies :
-- un fournisseur qui héberge une sous-zone déléguée avec une API et des jetons limités à
-  elle, à vérifier avant de choisir ; il demande une nouvelle implémentation du trait
-  `DnsProvider` (`put_txt` et `delete_txt`, une centaine de lignes) ;
-- ou `charly-hue.fr` entière chez Cloudflare, sans délégation, avec un jeton qui vaut alors
-  pour toute la zone (moins bien isolé).
+**Ce que ce choix accepte.** Cloudflare ne limite pas un jeton à une partie d'une zone : ce
+jeton peut modifier **tout** `charly-hue.fr` (site, courrier, autres projets). Un plan de
+contrôle compromis pourrait donc changer n'importe quel enregistrement du domaine, ou faire
+émettre un certificat pour n'importe lequel de ses noms. C'est acceptable pour trois maisons de
+la personne sur un domaine temporaire ; à ne pas reprendre pour le domaine définitif (voir plus
+bas). Un CAA `0 issue "letsencrypt.org"` sur `charly-hue.fr` limite au moins l'émission à Let's
+Encrypt, si les autres usages du domaine le permettent.
 
 **À savoir : le joker et les défis ACME.** Un joker ne s'applique pas à un nom qui existe
 (RFC 4592). Or poser `_acme-challenge.<id>.agendo.charly-hue.fr` fait exister `<id>.agendo…`
-(nœud vide) : tant que ce TXT existe, `<id>.agendo.charly-hue.fr` ne résout plus par le joker.
-C'est une coupure de quelques minutes à chaque renouvellement de certificat (tous les ~60
-jours), et elle dure si un TXT n'est jamais retiré (maison arrêtée pendant le défi). Suivi
+(nœud vide) : tant que ce TXT existe, `<id>.agendo.charly-hue.fr` peut ne plus résoudre par le
+joker. C'est une coupure de quelques minutes à chaque renouvellement de certificat (tous les ~60
+jours), et elle dure si un TXT n'est jamais retiré (maison arrêtée pendant le défi). À vérifier
+sur Cloudflare au premier certificat (`dig A <id>.agendo.charly-hue.fr` pendant le défi). Suivi
 possible : poser un `A`/`AAAA` explicite par maison au rattachement, au lieu du seul joker.
-À vérifier avec le fournisseur choisi.
+
+### Plus tard : sous-zone déléguée pour le domaine définitif
+
+Pour isoler le jeton DNS du reste du domaine : déléguer la zone des maisons (par exemple
+`agendo.<domaine>`) par des enregistrements `NS` (et `DS` si DNSSEC) à une zone séparée, et
+donner au `DnsProvider` un jeton limité à elle. Un plan de contrôle compromis ne pourrait plus
+alors faire émettre de certificats que pour les maisons. Cloudflare n'héberge une telle
+sous-zone qu'avec l'offre Enterprise : il faudra soit un autre fournisseur pour elle (une
+nouvelle implémentation de `DnsProvider`, `put_txt` et `delete_txt`), soit un domaine
+enregistré à part, dédié aux maisons, qui forme sa propre zone Cloudflare.
 
 ### Domaines temporaires : ce qui changera avec eux
 
@@ -117,7 +113,7 @@ Aucun secret ne passe par une variable d'environnement : Dokploy → application
 | `/run/secrets/database-url` | URL interne de la base (mot de passe compris) | `AGENDO_CLOUD_DATABASE_URL_FILE` |
 | `/run/secrets/signing-key` | graine Ed25519 du plan de contrôle (base64url), voir 4 | `AGENDO_CLOUD_SIGNING_KEY_FILE` |
 | `/run/secrets/resend-api-key` | clé d'API Resend (envoi seul, domaine vérifié) | `AGENDO_CLOUD_RESEND_API_KEY_FILE` |
-| `/run/secrets/dns-token` | jeton d'API DNS limité à la sous-zone `agendo.charly-hue.fr` (section 1) | `AGENDO_CLOUD_CLOUDFLARE_TOKEN_FILE` |
+| `/run/secrets/dns-token` | jeton d'API Cloudflare *DNS : Edit* sur la seule zone `charly-hue.fr` (section 1) | `AGENDO_CLOUD_CLOUDFLARE_TOKEN_FILE` |
 
 L'image tourne sous l'utilisateur 65534 : les fichiers doivent lui être lisibles.
 
@@ -162,8 +158,8 @@ Obligatoires sauf mention. Aucun domaine ni seuil n'a de valeur par défaut dans
 | `AGENDO_CLOUD_RESEND_API_URL` | — | facultatif : `https://api.resend.com` par défaut |
 | `AGENDO_CLOUD_OUTBOX_DIR` | `/tmp/outbox` | avec `outbox` seulement : un fichier par e-mail |
 | `AGENDO_CLOUD_DNS` | `cloudflare` | `cloudflare`, ou `fake` en développement (rien n'est publié) |
-| `AGENDO_CLOUD_CLOUDFLARE_ZONE_ID` | `023e1…` | identifiant de la sous-zone `agendo.charly-hue.fr` |
-| `AGENDO_CLOUD_CLOUDFLARE_TOKEN_FILE` | `/run/secrets/dns-token` | jeton d'API limité à la sous-zone (fichier) |
+| `AGENDO_CLOUD_CLOUDFLARE_ZONE_ID` | `023e1…` | identifiant de la zone Cloudflare qui contient `ZONE_MAISONS` (V1 : `charly-hue.fr`) |
+| `AGENDO_CLOUD_CLOUDFLARE_TOKEN_FILE` | `/run/secrets/dns-token` | jeton d'API *DNS : Edit* sur cette seule zone (fichier) |
 | `AGENDO_CLOUD_CLOUDFLARE_API_URL` | — | facultatif : `https://api.cloudflare.com/client/v4` par défaut |
 | `AGENDO_CLOUD_TRUST_X_FORWARDED_FOR` | `true` | `true` derrière Traefik (IP cliente = dernière entrée de `X-Forwarded-For`), `false` sinon ; les IPv6 sont comptées par /64 |
 | `AGENDO_CLOUD_LIMIT_IP_PER_MINUTE` | `30` | cérémonies du portail, rattachements, requêtes de maisons, par IP et par minute |
