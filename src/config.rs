@@ -164,10 +164,12 @@ impl Config {
             .iter()
             .map(|u| base_url("AGENDO_CLOUD_PUSH_URLS", u))
             .collect::<Result<_, _>>()?;
-        let trust_x_forwarded_for = match vars.var("AGENDO_CLOUD_TRUST_X_FORWARDED_FOR").as_deref().map(str::trim) {
-            None | Some("") | Some("false") => false,
-            Some("true") => true,
-            Some(_) => return Err(invalid("AGENDO_CLOUD_TRUST_X_FORWARDED_FOR", "true ou false attendu")),
+        // Obligatoire : derrière Traefik, `false` ferait partager à tous les clients l'IP du
+        // proxy, donc les mêmes limites de débit.
+        let trust_x_forwarded_for = match vars.required("AGENDO_CLOUD_TRUST_X_FORWARDED_FOR")?.as_str() {
+            "false" => false,
+            "true" => true,
+            _ => return Err(invalid("AGENDO_CLOUD_TRUST_X_FORWARDED_FOR", "true ou false attendu")),
         };
         Ok(Self {
             listen,
@@ -204,6 +206,7 @@ impl Config {
                     "AGENDO_CLOUD_LIMIT_HOUSE_PER_MINUTE" => "20",
                     "AGENDO_CLOUD_PUSH_PER_HOUR" => "60",
                     "AGENDO_CLOUD_PUSH_CRITICAL_PER_DAY" => "10",
+                    "AGENDO_CLOUD_TRUST_X_FORWARDED_FOR" => "false",
                     _ => return None,
                 }
                 .to_owned(),
@@ -246,6 +249,7 @@ mod tests {
             ("AGENDO_CLOUD_LIMIT_HOUSE_PER_MINUTE", "20"),
             ("AGENDO_CLOUD_PUSH_PER_HOUR", "60"),
             ("AGENDO_CLOUD_PUSH_CRITICAL_PER_DAY", "10"),
+            ("AGENDO_CLOUD_TRUST_X_FORWARDED_FOR", "false"),
         ])
     }
 
@@ -269,7 +273,13 @@ mod tests {
 
     #[test]
     fn missing_variable_is_named() {
-        for name in ["AGENDO_CLOUD_ZONE", "AGENDO_CLOUD_LIMIT_HOUSE_PER_MINUTE", "AGENDO_CLOUD_PUSH_PER_HOUR"] {
+        for name in [
+            "AGENDO_CLOUD_ZONE",
+            "AGENDO_CLOUD_LIMIT_HOUSE_PER_MINUTE",
+            "AGENDO_CLOUD_PUSH_PER_HOUR",
+            // Obligatoire : par défaut, derrière Traefik, tous les clients partageraient une IP.
+            "AGENDO_CLOUD_TRUST_X_FORWARDED_FOR",
+        ] {
             let mut map = base();
             map.remove(name);
             assert_eq!(load(&map).unwrap_err(), ConfigError::Missing(name.into()));

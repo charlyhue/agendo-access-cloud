@@ -74,7 +74,7 @@ Obligatoires sauf mention. Aucun domaine ni seuil n'a de valeur par défaut dans
 | `AGENDO_CLOUD_CLOUDFLARE_ZONE_ID` | `023e1…` | identifiant de la zone qui contient `ZONE_MAISONS` |
 | `AGENDO_CLOUD_CLOUDFLARE_TOKEN_FILE` | `/run/secrets/cloudflare-token` | jeton d'API (fichier) |
 | `AGENDO_CLOUD_CLOUDFLARE_API_URL` | — | facultatif : `https://api.cloudflare.com/client/v4` par défaut |
-| `AGENDO_CLOUD_TRUST_X_FORWARDED_FOR` | `true` | derrière Traefik : IP cliente = dernière entrée de `X-Forwarded-For` |
+| `AGENDO_CLOUD_TRUST_X_FORWARDED_FOR` | `true` | `true` derrière Traefik (IP cliente = dernière entrée de `X-Forwarded-For`), `false` sinon ; les IPv6 sont comptées par /64 |
 | `AGENDO_CLOUD_LIMIT_IP_PER_MINUTE` | `30` | cérémonies du portail, rattachements, requêtes de maisons, par IP et par minute |
 | `AGENDO_CLOUD_LIMIT_EMAIL_CODES_PER_HOUR` | `5` | codes de connexion envoyés par compte et par heure |
 | `AGENDO_CLOUD_LIMIT_HOUSE_PER_MINUTE` | `20` | requêtes signées par maison et par minute (la maison en fait ~1 toutes les 6 h) |
