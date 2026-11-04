@@ -42,6 +42,8 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/compte/passkeys/{id}/retirer", post(webauthn::remove))
         .route("/deconnexion", post(login::logout))
         .route("/maisons", get(houses::page))
+        .route("/maisons/rattacher", post(houses::new_code))
+        .route("/maisons/{id}/revoquer", post(houses::revoke))
         .route("/static/portail.css", get(css))
         .route("/static/webauthn.js", get(webauthn::script))
         .layer(middleware::from_fn_with_state(state, check_origin))

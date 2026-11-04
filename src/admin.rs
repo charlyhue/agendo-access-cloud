@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::{
     AppState,
-    db::{accounts, audit},
+    db::{accounts, audit, houses},
     mail,
 };
 
@@ -96,4 +96,21 @@ pub async fn suspend(state: &AppState, email: &str) -> anyhow::Result<String> {
 
 pub async fn resume(state: &AppState, email: &str) -> anyhow::Result<String> {
     set_subscription(state, email, true).await
+}
+
+/// Révoque une maison, par nom d'hôte complet ou par étiquette : ses jetons ne sont plus
+/// renouvelés (`revoked`), son nom d'hôte n'est jamais réattribué.
+pub async fn revoke_house(state: &AppState, host_or_label: &str) -> anyhow::Result<String> {
+    let value = host_or_label.trim().trim_end_matches('.').to_ascii_lowercase();
+    let house = houses::by_host_or_label(&state.db, &value).await?.with_context(|| format!("aucune maison {value}"))?;
+    if house.revoked_at.is_some() {
+        return Ok(format!("La maison {} est déjà révoquée.", house.host));
+    }
+    let now = state.clock.now();
+    let mut tx = state.db.begin().await?;
+    houses::revoke(&mut *tx, house.id, None, now).await?;
+    audit::record(&mut *tx, now, "house_revoked", house.account_id, Some(house.id), json!({"by": "admin"})).await?;
+    tx.commit().await?;
+    tracing::info!(maison = %house.id, hote = %house.host, "maison révoquée par l'administration");
+    Ok(format!("Maison {} révoquée.", house.host))
 }

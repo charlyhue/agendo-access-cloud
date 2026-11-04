@@ -271,3 +271,22 @@ pub async fn insert_house(app: &TestApp, account: uuid::Uuid, label: &str, seed:
 pub async fn account_id(app: &TestApp, email: &str) -> uuid::Uuid {
     sqlx::query_scalar("SELECT id FROM accounts WHERE email = $1").bind(email).fetch_one(&app.state.db).await.unwrap()
 }
+
+/// Code de rattachement affiché par le portail (`XXXX-XXXX`).
+pub async fn enrollment_code(app: &TestApp, session: &str) -> String {
+    let r = app.request(Method::POST, "/maisons/rattacher").session(session).form(&[]).send().await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let text = r.text();
+    let start = text.find("class=\"code\">").expect("code affiché") + "class=\"code\">".len();
+    text[start..].split('<').next().unwrap().trim().to_owned()
+}
+
+/// `POST /v1/houses/enroll` avec la clé de maison de graine `seed`.
+pub async fn enroll(app: &TestApp, code: &str, seed: u8, name: &str) -> TestResponse {
+    use agendo_access_protocol::{SigningKey, keys::encode_public_key};
+    let key = encode_public_key(&SigningKey::from_bytes(&[seed; 32]).verifying_key());
+    app.request(Method::POST, agendo_access_protocol::api::ENROLL_PATH)
+        .json(&serde_json::json!({"code": code, "house_key": key, "name": name}))
+        .send()
+        .await
+}
