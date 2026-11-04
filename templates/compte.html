@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Compte{% endblock %}
+{% block head %}<script src="/static/webauthn.js" defer></script>{% endblock %}
+{% block content %}
+<section class="carte">
+  <h1>Compte</h1>
+  <p><strong>{{ email }}</strong></p>
+  {% if subscription_active %}
+  <p class="ok">Abonnement actif.</p>
+  {% else %}
+  <p class="erreur">Abonnement inactif : vos maisons ne reçoivent plus de jetons d'accès.</p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  <h2>Passkeys</h2>
+  <table>
+    <thead><tr><th>Nom</th><th>Créée le</th><th>Dernière utilisation</th><th></th></tr></thead>
+    <tbody>
+      {% for p in passkeys %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td>{{ p.created }}</td>
+        <td>{{ p.last_used }}</td>
+        <td>
+          {% if passkeys.len() > 1 %}
+          <form method="post" action="/compte/passkeys/{{ p.id }}/retirer"><button class="secondaire" type="submit">Retirer</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <label for="nom">Nom de la nouvelle passkey (facultatif)</label>
+  <input id="nom" data-webauthn-name maxlength="64" placeholder="iPhone, Mac du bureau…">
+  <button type="button" data-webauthn="register"
+          data-options="/compte/passkeys/options"
+          data-finish="/compte/passkeys/terminer">Ajouter une passkey</button>
+  <p class="erreur" role="alert" data-webauthn-error hidden></p>
+</section>
+
+<section class="carte">
+  <h2>Sessions ouvertes</h2>
+  <table>
+    <thead><tr><th>Navigateur</th><th>Ouverte le</th><th>Dernière activité</th><th></th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td>{{ s.user_agent }}</td>
+        <td>{{ s.created }}</td>
+        <td>{{ s.last_seen }}</td>
+        <td>
+          {% if s.current %}
+          <span class="discret">Cette session</span>
+          {% else %}
+          <form method="post" action="/compte/sessions/{{ s.id }}/revoquer"><button class="secondaire" type="submit">Fermer</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="carte">
+  <h2>Vos données</h2>
+  <p><a href="/compte/export">Télécharger toutes les données du compte (JSON)</a></p>
+  <h2>Supprimer le compte</h2>
+  <p class="discret">Supprime le compte, ses passkeys et ses sessions. Vos maisons sont révoquées :
+    elles perdent l'accès distant et les notifications.</p>
+  <form method="post" action="/compte/supprimer">
+    <label for="confirmation">Saisissez votre adresse e-mail pour confirmer</label>
+    <input id="confirmation" name="confirmation" type="email" autocomplete="off" required>
+    <button class="danger" type="submit">Supprimer définitivement le compte</button>
+  </form>
+</section>
+{% endblock %}

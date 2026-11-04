@@ -1,0 +1,48 @@
+# cargo-deny : avis de sécurité, licences, doublons, sources (CI : `cargo deny check`).
+
+[graph]
+all-features = false
+
+[advisories]
+# Tout avis RustSec non ignoré fait échouer la CI. Un avis ignoré porte sa raison.
+ignore = [
+    # rsa 0.9 (Marvin) et crypto-bigint 0.5 (temps non constant) arrivent par agendo-webauthn
+    # (p256 0.13, rsa 0.9). Le portail ne fait que vérifier des signatures WebAuthn avec des
+    # clés publiques : aucun secret ne passe par ces calculs. À revoir quand le socle monte
+    # p256 et rsa (signalé dans la PR).
+    { id = "RUSTSEC-2023-0071", reason = "rsa : vérification de signatures publiques seulement (agendo-webauthn)" },
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint : aucun secret dans la vérification ECDSA (agendo-webauthn)" },
+    # basic-toml n'est lu qu'à la compilation, par la macro d'askama (askama.toml).
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml : macro d'askama à la compilation, sans donnée extérieure" },
+]
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[licenses.private]
+# Ce dépôt et les crates du socle (`UNLICENSED`, jamais publiés) ne sont pas jugés.
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+# Les dépendances Git du socle n'ont pas de version : Cargo.lock les fige à un commit.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# Le socle : chemin local en développement, renvoyé vers GitHub en CI (`git config insteadOf`).
+allow-git = [
+    "file:///Users/chue/workspace/agendo",
+]

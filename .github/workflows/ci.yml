@@ -1,0 +1,102 @@
+# Tests (PostgreSQL en service), clippy, cargo-deny, image ; sur main : push GHCR étiqueté par
+# SHA puis déploiement Dokploy.
+#
+# Le socle (dépôt privé charlyhue/agendo) est une dépendance Git déclarée
+# `file:///Users/chue/workspace/agendo` : `git config insteadOf` la renvoie vers GitHub, lu
+# avec la clé de déploiement AGENDO_DEPLOY_KEY (docs/deploy.md, « Clé de déploiement »).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  AGENDO_GIT: ssh://git@github.com/charlyhue/agendo.git
+  IMAGE: ghcr.io/charlyhue/agendo-access-cloud
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Base jetable du service de la CI, sans mot de passe.
+      DATABASE_URL: postgres://postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.AGENDO_DEPLOY_KEY }}
+      - name: Socle par GitHub
+        run: git config --global url."$AGENDO_GIT".insteadOf "file:///Users/chue/workspace/agendo"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --locked
+      - name: cargo-deny
+        run: cargo deny --locked check
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.AGENDO_DEPLOY_KEY }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          ssh: default
+          build-args: AGENDO_GIT=${{ env.AGENDO_GIT }}
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Déploiement Dokploy
+        if: github.event_name == 'push'
+        env:
+          DOKPLOY_WEBHOOK_URL: ${{ secrets.DOKPLOY_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DOKPLOY_WEBHOOK_URL" ]; then
+            echo "::warning::secret DOKPLOY_WEBHOOK_URL absent : pas de déploiement"
+            exit 0
+          fi
+          curl -fsS -X POST "$DOKPLOY_WEBHOOK_URL" -o /dev/null

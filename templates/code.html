@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Code de connexion{% endblock %}
+{% block content %}
+<section class="carte">
+  <h1>Code de connexion</h1>
+  {% if let Some(error) = error %}<p class="erreur" role="alert">{{ error }}</p>{% endif %}
+  <p>Si un compte actif correspond à <strong>{{ email }}</strong>, un code à 6 chiffres vient d'y
+    être envoyé. Il est valable 10 minutes.</p>
+  <form method="post" action="/connexion/code/verifier">
+    <input type="hidden" name="email" value="{{ email }}">
+    <label for="code">Code reçu</label>
+    <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" required>
+    <button type="submit">Se connecter</button>
+  </form>
+  <p><a href="/connexion">Revenir à la connexion</a></p>
+</section>
+{% endblock %}

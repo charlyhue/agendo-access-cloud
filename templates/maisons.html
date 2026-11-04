@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Maisons{% endblock %}
+{% block content %}
+<section class="carte">
+  <h1>Maisons</h1>
+  {% if subscription_active %}
+  <form method="post" action="/maisons/rattacher">
+    <p class="discret">Rattacher une maison lui donne un nom d'hôte, un certificat et l'accès
+      distant. Le portail affiche un code à saisir dans l'interface de la maison.</p>
+    <button type="submit">Rattacher une maison</button>
+  </form>
+  {% else %}
+  <p class="erreur">Abonnement inactif : vos maisons ne reçoivent plus de jetons, et aucune
+    maison ne peut être rattachée.</p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  {% if houses.is_empty() %}
+  <p class="discret">Aucune maison rattachée pour l'instant.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>Maison</th><th>Rattachée le</th><th>Dernier jeton</th><th></th></tr></thead>
+    <tbody>
+      {% for h in houses %}
+      <tr>
+        <td><strong>{{ h.name }}</strong><br><span class="hote">{{ h.host }}</span></td>
+        <td>{{ h.enrolled }}</td>
+        <td>{{ h.last_token }}</td>
+        <td>
+          {% if let Some(revoked) = h.revoked %}
+          <span class="discret">Révoquée le {{ revoked }}</span>
+          {% else %}
+          <form method="post" action="/maisons/{{ h.id }}/revoquer"><button class="secondaire" type="submit">Révoquer</button></form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

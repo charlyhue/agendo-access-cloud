@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Rattacher une maison{% endblock %}
+{% block content %}
+<section class="carte">
+  <h1>Rattacher une maison</h1>
+  <p>Saisissez ce code dans l'interface de votre maison, page <strong>Agendo Access</strong> :</p>
+  <p class="code">{{ code }}</p>
+  <p class="discret">Il ne sert qu'une fois et expire le {{ expires }} (15 minutes). Majuscules,
+    espaces et tirets n'ont pas d'importance.</p>
+  <p><a href="/maisons">Retour aux maisons</a></p>
+</section>
+{% endblock %}

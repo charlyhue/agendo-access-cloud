@@ -1,0 +1,50 @@
+/* Portail d'Agendo Access : sobre, lisible, clair ou sombre selon le système. */
+:root {
+  color-scheme: light dark;
+  --fond: #f6f5f2;
+  --carte: #ffffff;
+  --texte: #1d1d1b;
+  --discret: #6b6a66;
+  --accent: #2f5d50;
+  --accent-texte: #ffffff;
+  --bord: #e2e0da;
+  --erreur: #a3271f;
+  --ok: #2f5d50;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --fond: #151614; --carte: #1f201d; --texte: #ecebe7; --discret: #a3a29d; --accent: #7fb8a6;
+          --accent-texte: #10201b; --bord: #33342f; --erreur: #ff8a80; --ok: #7fb8a6; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fond); color: var(--texte); }
+.entete { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;
+          padding: 1rem 1.5rem; border-bottom: 1px solid var(--bord); background: var(--carte); }
+.marque { font-weight: 700; color: var(--texte); text-decoration: none; }
+nav { display: flex; gap: 1rem; align-items: center; }
+nav form { margin: 0; }
+main { max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
+.carte { background: var(--carte); border: 1px solid var(--bord); border-radius: 12px; padding: 1.5rem;
+         margin-bottom: 1.5rem; }
+h1 { margin-top: 0; font-size: 1.5rem; }
+h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+a { color: var(--accent); }
+label { display: block; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+input { width: 100%; padding: 0.6rem 0.75rem; font: inherit; border: 1px solid var(--bord); border-radius: 8px;
+        background: var(--fond); color: var(--texte); }
+button { margin-top: 0.75rem; padding: 0.6rem 1rem; font: inherit; font-weight: 600; border: 0; border-radius: 8px;
+         background: var(--accent); color: var(--accent-texte); cursor: pointer; }
+button.secondaire { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+button.danger { background: var(--erreur); color: #ffffff; }
+button.lien { margin: 0; padding: 0; background: none; color: var(--accent); font-weight: 400; text-decoration: underline; }
+.erreur { color: var(--erreur); font-weight: 600; }
+.ok { color: var(--ok); font-weight: 600; }
+.discret { color: var(--discret); font-size: 0.95rem; }
+.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 2rem; letter-spacing: 0.25em; font-weight: 700; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--bord); vertical-align: top; }
+td form { margin: 0; }
+td button { margin: 0; }
+.hote { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9rem; word-break: break-all; }
+[hidden] { display: none !important; }
