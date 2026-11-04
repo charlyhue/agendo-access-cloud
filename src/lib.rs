@@ -4,6 +4,7 @@
 //! portail (tout le reste). Sans état hors de PostgreSQL : deux instances peuvent tourner.
 
 pub mod admin;
+pub mod api;
 pub mod clock;
 pub mod config;
 pub mod crypto;
@@ -26,6 +27,7 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
+        .merge(api::routes())
         .merge(portal::routes(state.clone()))
         .with_state(state)
 }

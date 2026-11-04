@@ -40,10 +40,14 @@ impl TestApp {
     }
 
     pub fn with_config(pool: PgPool, config: Config) -> Self {
+        Self::build(pool, config, Signer::from_seed([1; 32], "k1", Vec::new()).unwrap())
+    }
+
+    pub fn build(pool: PgPool, config: Config, signer: Signer) -> Self {
         let clock = Arc::new(ManualClock::new(start()));
         let mailer = Arc::new(MemoryMailer::default());
         let dns = Arc::new(FakeDns::default());
-        let signer = Arc::new(Signer::from_seed([1; 32], "k1", Vec::new()).unwrap());
+        let signer = Arc::new(signer);
         let state = AppState {
             db: pool,
             config: Arc::new(config),
