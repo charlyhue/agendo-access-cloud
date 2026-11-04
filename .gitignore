@@ -1,0 +1,8 @@
+/target
+.DS_Store
+# Aucun secret dans le dépôt : ni fichier d'environnement, ni clé, ni boîte d'envoi de dev.
+.env
+.env.*
+*.key
+*.pem
+/.dev/
