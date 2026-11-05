@@ -46,14 +46,24 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/maisons/{id}/revoquer", post(houses::revoke))
         .route("/static/portail.css", get(css))
         .route("/static/webauthn.js", get(webauthn::script))
+        .route("/static/favicon.svg", get(favicon))
         .layer(middleware::from_fn_with_state(state, check_origin))
         .layer(middleware::from_fn(security_headers))
 }
 
 async fn css() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, "public, max-age=3600")],
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")],
         include_str!("../../static/portail.css"),
+    )
+}
+
+/// Icône du portail : le logo de l'interface des maisons (servi d'ici, pas en `data:`, que la
+/// CSP refuse).
+async fn favicon() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/svg+xml"), (header::CACHE_CONTROL, "public, max-age=86400")],
+        include_str!("../../static/favicon.svg"),
     )
 }
 

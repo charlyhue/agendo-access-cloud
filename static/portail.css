@@ -1,50 +1,163 @@
-/* Portail d'Agendo Access : sobre, lisible, clair ou sombre selon le système. */
+/* Portail d'Agendo Access : l'apparence de l'interface des maisons.
+ *
+ * Jetons repris du socle (charlyhue/agendo, tag v0.42.0) : `ui/src/index.css` (couleurs, polices,
+ * verre, rayons) et la page de connexion de la passerelle
+ * (`crates/agendo-gateway/src/auth/login.html` : fond, carte de verre, boutons, champs).
+ * Comme l'interface des maisons, le portail est sombre seulement (`color-scheme: dark`) et
+ * utilise les polices du système : aucun fichier de police, aucune ressource extérieure. */
+
 :root {
-  color-scheme: light dark;
-  --fond: #f6f5f2;
-  --carte: #ffffff;
-  --texte: #1d1d1b;
-  --discret: #6b6a66;
-  --accent: #2f5d50;
-  --accent-texte: #ffffff;
-  --bord: #e2e0da;
-  --erreur: #a3271f;
-  --ok: #2f5d50;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+
+  /* Polices (`--font-sans`, `--font-mono` du socle). */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  /* Accents façon Apple Home (socle) : lumières (ambre), climat, réseau, états. */
+  --color-accent-light: #f6b100;
+  --color-accent-climate: #ff8a3d;
+  --color-accent-info: #3b9bff;
+  --color-good: #34c759;
+  --color-warn: #ffb020;
+  --color-bad: #ff453a;
+
+  /* Verre des panneaux et fiches. */
+  --agendo-glass-background: rgb(30 30 32 / 0.6);
+  --agendo-glass-blur: 24px;
+  --agendo-sheet-radius: 28px;
+  --agendo-chip-radius: 1rem;
+
+  /* Texte et traits sur fond sombre. */
+  --texte: #fff;
+  --texte-doux: rgb(255 255 255 / 0.8);
+  --discret: rgb(255 255 255 / 0.55);
+  --tres-discret: rgb(255 255 255 / 0.38);
+  --bord: rgb(255 255 255 / 0.08);
+  --separateur: rgb(255 255 255 / 0.06);
+  --erreur-texte: #ff7a70;
+
+  /* Commandes (page de connexion de la passerelle). */
+  --champ-rayon: 14px;
+  --champ-fond: rgb(0 0 0 / 0.35);
+  --primaire-texte: #1a1205;
+  --secondaire-fond: rgb(255 255 255 / 0.1);
+  --secondaire-fond-survol: rgb(255 255 255 / 0.15);
+
+  font-family: var(--font-sans);
   line-height: 1.5;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --fond: #151614; --carte: #1f201d; --texte: #ecebe7; --discret: #a3a29d; --accent: #7fb8a6;
-          --accent-texte: #10201b; --bord: #33342f; --erreur: #ff8a80; --ok: #7fb8a6; }
-}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--fond); color: var(--texte); }
-.entete { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;
-          padding: 1rem 1.5rem; border-bottom: 1px solid var(--bord); background: var(--carte); }
-.marque { font-weight: 700; color: var(--texte); text-decoration: none; }
-nav { display: flex; gap: 1rem; align-items: center; }
+
+html { min-height: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--texte);
+  background: radial-gradient(120% 90% at 20% 0%, #3a2a12 0%, #161016 45%, #050507 100%) fixed;
+  background-color: #050507;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection { background: rgb(246 177 0 / 0.35); }
+
+/* En-tête : logo, nom, navigation. */
+.entete {
+  display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;
+  max-width: 46rem; margin: 0 auto; padding: 1.25rem 1rem 0;
+}
+.marque {
+  display: inline-flex; align-items: center; gap: 0.625rem;
+  color: var(--texte); text-decoration: none; font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+}
+.marque svg { width: 28px; height: 28px; flex: none; }
+nav { display: flex; gap: 1.25rem; align-items: center; font-size: 15px; }
+nav a { color: var(--texte-doux); text-decoration: none; }
+nav a:hover { color: var(--texte); }
 nav form { margin: 0; }
-main { max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
-.carte { background: var(--carte); border: 1px solid var(--bord); border-radius: 12px; padding: 1.5rem;
-         margin-bottom: 1.5rem; }
-h1 { margin-top: 0; font-size: 1.5rem; }
-h2 { font-size: 1.1rem; margin-top: 1.5rem; }
-a { color: var(--accent); }
-label { display: block; font-weight: 600; margin: 0.75rem 0 0.25rem; }
-input { width: 100%; padding: 0.6rem 0.75rem; font: inherit; border: 1px solid var(--bord); border-radius: 8px;
-        background: var(--fond); color: var(--texte); }
-button { margin-top: 0.75rem; padding: 0.6rem 1rem; font: inherit; font-weight: 600; border: 0; border-radius: 8px;
-         background: var(--accent); color: var(--accent-texte); cursor: pointer; }
-button.secondaire { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-button.danger { background: var(--erreur); color: #ffffff; }
-button.lien { margin: 0; padding: 0; background: none; color: var(--accent); font-weight: 400; text-decoration: underline; }
-.erreur { color: var(--erreur); font-weight: 600; }
-.ok { color: var(--ok); font-weight: 600; }
-.discret { color: var(--discret); font-size: 0.95rem; }
-.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 2rem; letter-spacing: 0.25em; font-weight: 700; }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--bord); vertical-align: top; }
+
+main { max-width: 46rem; margin: 1.75rem auto 3rem; padding: 0 1rem; }
+
+/* Carte de verre (la `main` de la page de connexion de la passerelle). */
+.carte {
+  background: var(--agendo-glass-background);
+  border: 1px solid var(--bord);
+  border-radius: var(--agendo-sheet-radius);
+  -webkit-backdrop-filter: blur(var(--agendo-glass-blur)) saturate(160%);
+  backdrop-filter: blur(var(--agendo-glass-blur)) saturate(160%);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.45);
+  padding: 28px;
+  margin-bottom: 1.25rem;
+}
+
+h1 { margin: 0 0 0.75rem; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { margin: 1.5rem 0 0.5rem; font-size: 17px; font-weight: 600; }
+.carte > h2:first-child { margin-top: 0; }
+p { margin: 0.5rem 0; color: var(--texte-doux); font-size: 15px; }
+strong { color: var(--texte); }
+a { color: var(--color-accent-light); }
+
+/* Champs et boutons. */
+label { display: block; margin: 1rem 0 6px 4px; font-size: 12px; color: rgb(255 255 255 / 0.5); }
+input {
+  width: 100%; padding: 12px 14px; font: inherit; font-size: 16px; color: var(--texte);
+  background: var(--champ-fond); border: 1px solid var(--bord); border-radius: var(--champ-rayon); outline: none;
+}
+input::placeholder { color: var(--tres-discret); }
+input:focus { border-color: rgb(246 177 0 / 0.6); }
+
+button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 0.875rem; padding: 13px 18px; font: inherit; font-size: 15px; font-weight: 600;
+  color: var(--primaire-texte); background: var(--color-accent-light);
+  border: 0; border-radius: var(--champ-rayon); cursor: pointer; transition: opacity 0.15s, transform 0.1s;
+}
+button:active { transform: scale(0.98); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.secondaire { color: var(--texte); background: var(--secondaire-fond); }
+button.secondaire:hover { background: var(--secondaire-fond-survol); }
+button.danger { color: #fff; background: var(--color-bad); }
+button.lien {
+  margin: 0; padding: 0; color: var(--texte-doux); background: none; font-size: inherit; font-weight: 400;
+}
+button.lien:hover { color: var(--texte); }
+
+/* Messages. */
+.erreur { color: var(--erreur-texte); font-weight: 500; }
+.ok { color: var(--color-good); font-weight: 500; }
+.discret { color: var(--discret); font-size: 14px; }
+
+/* Code de rattachement. */
+.code {
+  margin: 1rem 0; font-family: var(--font-mono); font-size: 2rem; font-weight: 700; letter-spacing: 0.25em;
+  color: var(--color-accent-light);
+}
+
+/* Listes (maisons, passkeys, sessions). */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th {
+  padding: 0 0.25rem 0.5rem; text-align: left; font-size: 12px; font-weight: 500; color: rgb(255 255 255 / 0.5);
+}
+td { padding: 0.75rem 0.25rem; text-align: left; vertical-align: top; color: var(--texte-doux); border-top: 1px solid var(--separateur); }
+td strong { font-weight: 600; }
 td form { margin: 0; }
-td button { margin: 0; }
-.hote { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9rem; word-break: break-all; }
+td button { margin: 0; padding: 8px 14px; font-size: 14px; white-space: nowrap; }
+@media (min-width: 640px) {
+  td .discret { white-space: nowrap; }
+}
+/* Agent utilisateur d'une session : long et sans espaces utiles, coupé n'importe où. */
+td.agent { overflow-wrap: anywhere; }
+.hote { font-family: var(--font-mono); font-size: 13px; color: var(--discret); word-break: break-all; }
+
+/* Petits écrans : cartes moins rembourrées. */
+@media (max-width: 639px) {
+  .carte { padding: 20px; border-radius: 22px; }
+}
+
 [hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

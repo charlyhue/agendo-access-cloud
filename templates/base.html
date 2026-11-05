@@ -2,14 +2,25 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#1c1410">
+  <meta name="robots" content="noindex">
   <title>{% block title %}{% endblock %} · Agendo Access</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/portail.css">
   {% block head %}{% endblock %}
 </head>
 <body>
   <header class="entete">
-    <a class="marque" href="/">Agendo Access</a>
+    <a class="marque" href="/">
+      <svg viewBox="20 20 80 84" fill="none" aria-hidden="true">
+        <path d="M26 98 V56 L60 26 L94 56 V98 Z" stroke="#F4F5F2" stroke-width="7" stroke-linejoin="round"/>
+        <path d="M42 64 L54 74 L42 84" stroke="#F4F5F2" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="60" y="80" width="18" height="6" rx="3" fill="#FF6B2C"/>
+      </svg>
+      Agendo Access
+    </a>
     {% if connected %}
     <nav>
       <a href="/maisons">Maisons</a>
