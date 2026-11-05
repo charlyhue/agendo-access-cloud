@@ -329,7 +329,7 @@ pub async fn remove(
 
 pub async fn script() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8"), (header::CACHE_CONTROL, "public, max-age=3600")],
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")],
         include_str!("../../static/webauthn.js"),
     )
 }
