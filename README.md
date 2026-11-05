@@ -15,12 +15,14 @@ maisons ni leurs notifications. Les relais (dépôt `agendo-access-relays`) vér
 sans base de données.
 
 La spec qui fait foi vit dans le dépôt du socle :
-`docs/superpowers/specs/2026-11-04-agendo-access-design.md` (branche `agendo-access`).
+`docs/superpowers/specs/2026-11-04-agendo-access-design.md`, dans la version du tag dont dépend
+`Cargo.toml` (aujourd'hui `v0.42.0`).
 
 ## Stack
 
 Rust (axum, sqlx et ses migrations), PostgreSQL. Le protocole commun (`agendo-access-protocol`)
-et la vérification WebAuthn (`agendo-webauthn`) viennent du dépôt `charlyhue/agendo` par Git.
+et la vérification WebAuthn (`agendo-webauthn`) viennent du dépôt `charlyhue/agendo` par Git
+(SSH, tag publié).
 
 Les conventions de travail sont dans [CLAUDE.md](CLAUDE.md), le déploiement dans
 `docs/deploy.md` (domaines et DNS compris), la configuration d'exemple dans

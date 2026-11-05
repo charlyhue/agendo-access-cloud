@@ -1,0 +1,5 @@
+# Le socle (dépôt privé charlyhue/agendo) se récupère par SSH : `git` en ligne de commande
+# utilise l'agent SSH et `~/.ssh/config` (en local), ou la clé de déploiement chargée dans
+# l'agent (CI, image). La bibliothèque git intégrée à cargo ne les voit pas tous.
+[net]
+git-fetch-with-cli = true

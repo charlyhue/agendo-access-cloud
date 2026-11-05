@@ -1,9 +1,9 @@
 # Tests (PostgreSQL en service), clippy, cargo-deny, image ; sur main : push GHCR étiqueté par
 # SHA puis déploiement Dokploy.
 #
-# Le socle (dépôt privé charlyhue/agendo) est une dépendance Git déclarée
-# `file:///Users/chue/workspace/agendo` : `git config insteadOf` la renvoie vers GitHub, lu
-# avec la clé de déploiement AGENDO_DEPLOY_KEY (docs/deploy.md, « Clé de déploiement »).
+# Le socle (dépôt privé charlyhue/agendo) est une dépendance Git par SSH à un tag
+# (Cargo.toml) : cargo passe par `git` (CARGO_NET_GIT_FETCH_WITH_CLI) et l'agent SSH, chargé
+# de la clé de déploiement AGENDO_DEPLOY_KEY (docs/deploy.md, « Socle et clé de déploiement »).
 name: CI
 
 on:
@@ -18,7 +18,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-  AGENDO_GIT: ssh://git@github.com/charlyhue/agendo.git
   IMAGE: ghcr.io/charlyhue/agendo-access-cloud
 
 jobs:
@@ -45,8 +44,6 @@ jobs:
       - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.AGENDO_DEPLOY_KEY }}
-      - name: Socle par GitHub
-        run: git config --global url."$AGENDO_GIT".insteadOf "file:///Users/chue/workspace/agendo"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -83,7 +80,6 @@ jobs:
         with:
           context: .
           ssh: default
-          build-args: AGENDO_GIT=${{ env.AGENDO_GIT }}
           push: ${{ github.event_name == 'push' }}
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}

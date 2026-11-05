@@ -8,10 +8,11 @@ license = "UNLICENSED"
 publish = false
 
 [dependencies]
-# Protocole commun et WebAuthn : dépôt du socle, branche `agendo-access`. En CI et dans
-# l'image, `git config url.….insteadOf` renvoie cette URL vers GitHub (docs/deploy.md).
-agendo-access-protocol = { git = "file:///Users/chue/workspace/agendo", branch = "agendo-access" }
-agendo-webauthn = { git = "file:///Users/chue/workspace/agendo", branch = "agendo-access" }
+# Protocole commun et WebAuthn : dépôt privé du socle, par SSH, à un tag publié. Cargo passe
+# par `git` et `ssh` (`.cargo/config.toml`) : agent SSH en local, clé de déploiement en CI
+# (docs/deploy.md, « Socle et clé de déploiement »).
+agendo-access-protocol = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.42.0" }
+agendo-webauthn = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.42.0" }
 
 anyhow = "1"
 askama = "0.16"

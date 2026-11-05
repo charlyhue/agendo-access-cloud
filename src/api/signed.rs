@@ -1,17 +1,13 @@
-//! Requêtes signées par la maison (`Agendo-Signature`, `signature::verify_request` du
-//! protocole), puis jetons et ACME.
+//! Requêtes signées par la maison, puis jetons et ACME.
 //!
-//! L'en-tête du protocole ne dit pas quelle maison signe. Le plan de contrôle la retrouve :
-//! - par `Agendo-House: <house_id>` s'il est présent (non signé : il désigne seulement la clé
-//!   contre laquelle vérifier ; un identifiant faux fait échouer la vérification) ;
-//! - sinon, comme le fait la brique du socle aujourd'hui, en essayant la clé de chaque maison.
-//!   Coût linéaire en nombre de maisons, acceptable en V1 sur invitation ; un identifiant dans
-//!   le protocole le supprimera (demande notée dans la PR).
+//! `Agendo-Signature: house=<house_id>,t=<unix>,sig=<base64url>` (protocole) : `house` désigne
+//! la maison, dont la clé est en base, et fait partie du message signé. Une signature ne vaut
+//! donc que pour la maison qu'elle nomme.
 
 use agendo_access_protocol::{
     api::{AcmeRequest, RefusalReason, TokensResponse},
     keys::decode_public_key,
-    signature::{SIGNATURE_HEADER, SignatureError, verify_request},
+    signature::{RequestSignature, SIGNATURE_HEADER, SignatureError},
 };
 use axum::{
     Json,
@@ -28,8 +24,6 @@ use crate::{
     net::ClientIp,
 };
 
-/// En-tête qui désigne la maison qui signe.
-pub const HOUSE_HEADER: &str = "agendo-house";
 /// Taille maximale du corps d'une requête signée.
 const MAX_BODY: usize = 16 * 1024;
 
@@ -57,33 +51,22 @@ impl FromRequest<AppState> for SignedHouse {
         if !rate_limit::hit(&state.db, &format!("maison-ip:{}", ip.0), window, state.config.limits.ip_per_minute, now).await? {
             return Err(ApiError::new(RefusalReason::RateLimited, "trop de requêtes depuis cette adresse"));
         }
-        let header = |name: &str| parts.headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
-        let Some(signature) = header(SIGNATURE_HEADER) else {
+        let Some(header) = parts.headers.get(SIGNATURE_HEADER).and_then(|v| v.to_str().ok()) else {
             return Err(bad_signature("en-tête Agendo-Signature absent"));
         };
+        let signature = RequestSignature::parse(header).map_err(signature_error)?;
         let body = axum::body::to_bytes(body, MAX_BODY)
             .await
             .map_err(|_| ApiError::new(RefusalReason::BadRequest, "corps trop volumineux"))?;
-        let request = Signed {
-            header: &signature,
-            method: parts.method.as_str(),
-            path: parts.uri.path_and_query().map_or(parts.uri.path(), |p| p.as_str()),
-            body: &body,
-            now: now.timestamp(),
+        // Les identifiants de maison sont des UUID : tout autre `house` est inconnu.
+        let house = match Uuid::parse_str(&signature.house) {
+            Ok(id) => houses::by_id(&state.db, id).await?,
+            Err(_) => None,
         };
-        let house = match header(HOUSE_HEADER) {
-            Some(id) => {
-                let Ok(id) = Uuid::parse_str(id.trim()) else {
-                    return Err(bad_signature("en-tête Agendo-House invalide"));
-                };
-                let Some(house) = houses::by_id(&state.db, id).await? else {
-                    return Err(bad_signature("maison inconnue"));
-                };
-                request.verify(&house)?;
-                house
-            }
-            None => request.find(houses::all(&state.db).await?)?,
-        };
+        let Some(house) = house else { return Err(bad_signature("maison inconnue")) };
+        let key = decode_public_key(&house.public_key).map_err(|e| anyhow::anyhow!("clé de maison en base invalide : {e}"))?;
+        let path = parts.uri.path_and_query().map_or(parts.uri.path(), |p| p.as_str());
+        signature.verify(parts.method.as_str(), path, &body, now.timestamp(), &key).map_err(signature_error)?;
         let limit = state.config.limits.house_per_minute;
         if !rate_limit::hit(&state.db, &format!("maison:{}", house.id), window, limit, now).await? {
             return Err(ApiError::new(RefusalReason::RateLimited, "trop de requêtes pour cette maison"));
@@ -92,45 +75,11 @@ impl FromRequest<AppState> for SignedHouse {
     }
 }
 
-/// Requête à vérifier.
-struct Signed<'a> {
-    header: &'a str,
-    method: &'a str,
-    path: &'a str,
-    body: &'a [u8],
-    now: i64,
-}
-
 fn signature_error(e: SignatureError) -> ApiError {
     match e {
         SignatureError::Stale => bad_signature("horodatage hors de la fenêtre de 60 s : vérifiez l'horloge de la maison"),
         SignatureError::Malformed => bad_signature("en-tête Agendo-Signature mal formé"),
         SignatureError::Invalid => bad_signature("signature invalide"),
-    }
-}
-
-impl Signed<'_> {
-    fn check(&self, house: &House) -> Result<(), SignatureError> {
-        // Une clé illisible en base ne vérifie rien (journalisée par l'appelant).
-        let Ok(key) = decode_public_key(&house.public_key) else { return Err(SignatureError::Invalid) };
-        verify_request(self.header, self.method, self.path, self.body, self.now, &key)
-    }
-
-    fn verify(&self, house: &House) -> Result<(), ApiError> {
-        self.check(house).map_err(signature_error)
-    }
-
-    /// Maison dont la clé vérifie la signature. Format et horodatage ne dépendent pas de la
-    /// clé : leur refus tombe dès la première.
-    fn find(&self, houses: Vec<House>) -> Result<House, ApiError> {
-        for house in houses {
-            match self.check(&house) {
-                Ok(()) => return Ok(house),
-                Err(SignatureError::Invalid) => {}
-                Err(e) => return Err(signature_error(e)),
-            }
-        }
-        Err(bad_signature("aucune maison rattachée ne correspond à cette signature"))
     }
 }
 
@@ -179,7 +128,7 @@ async fn acme(state: AppState, signed: SignedHouse, put: bool) -> Result<StatusC
     let result = if put { state.dns.put_txt(&name, &value).await } else { state.dns.delete_txt(&name, &value).await };
     result.map_err(|e| {
         tracing::error!(maison = %house.id, erreur = %format!("{e:#}"), "fournisseur DNS en échec");
-        ApiError::new(RefusalReason::Unknown, "fournisseur DNS indisponible : réessayer plus tard")
+        ApiError::internal(StatusCode::BAD_GATEWAY, "fournisseur DNS indisponible : réessayer plus tard")
     })?;
     tracing::info!(maison = %house.id, pose = put, "défi ACME DNS-01");
     Ok(StatusCode::NO_CONTENT)

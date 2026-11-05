@@ -1,7 +1,8 @@
 # Agendo Access Cloud : consignes pour l'agent
 
-Plan de contrôle et portail d'Agendo Access. La spec fait foi :
-`git -C /Users/chue/workspace/agendo show agendo-access:docs/superpowers/specs/2026-11-04-agendo-access-design.md`
+Plan de contrôle et portail d'Agendo Access. La spec fait foi, dans la version du socle dont on
+dépend (tag de `Cargo.toml`) :
+`git -C /Users/chue/workspace/agendo show v0.42.0:docs/superpowers/specs/2026-11-04-agendo-access-design.md`
 (sections « Plan de contrôle », « Protocole commun », « Sécurité »). Les points marqués
 **[à trancher]** se proposent à la personne, ils ne se décident pas seul : prendre le choix par
 défaut indiqué, le signaler, et le lister dans la PR.
@@ -39,7 +40,10 @@ défaut indiqué, le signaler, et le lister dans la PR.
 - Le compte cloud n'ouvre jamais la maison : le plan de contrôle délivre des jetons et pose
   des TXT ACME, rien d'autre. Aucun jeton de téléphone, aucun contenu de maison en base.
 - Le protocole (`agendo-access-protocol`) et WebAuthn (`agendo-webauthn`) viennent du dépôt
-  `agendo`, branche `agendo-access`, par Git. **Ne jamais modifier le dépôt agendo** : un besoin
-  ou un désaccord sur le protocole se note dans la PR, pour la personne.
+  `charlyhue/agendo` par Git, en SSH, à un tag publié (`Cargo.toml` ; `.cargo/config.toml`
+  fait passer cargo par `git` et l'agent SSH). Monter de version : changer le tag des deux
+  lignes, `cargo update -p agendo-access-protocol -p agendo-webauthn`, revoir `deny.toml`
+  (`docs/deploy.md`). **Ne jamais modifier le dépôt agendo** : un besoin ou un désaccord sur le
+  protocole se note dans la PR, pour la personne.
 - Les skills superpowers s'invoquent avant d'agir dès qu'ils s'appliquent
   (`writing-plans`, `test-driven-development`, `verification-before-completion`).

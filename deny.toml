@@ -6,12 +6,10 @@ all-features = false
 [advisories]
 # Tout avis RustSec non ignoré fait échouer la CI. Un avis ignoré porte sa raison.
 ignore = [
-    # rsa 0.9 (Marvin) et crypto-bigint 0.5 (temps non constant) arrivent par agendo-webauthn
-    # (p256 0.13, rsa 0.9). Le portail ne fait que vérifier des signatures WebAuthn avec des
-    # clés publiques : aucun secret ne passe par ces calculs. À revoir quand le socle monte
-    # p256 et rsa (signalé dans la PR).
+    # rsa 0.9 (Marvin) arrive par agendo-webauthn (socle v0.42.0, qui a monté p256 en 0.14 mais
+    # garde rsa 0.9.10). Le portail ne fait que vérifier des signatures WebAuthn avec des clés
+    # publiques : aucun secret ne passe par ces calculs. À revoir quand le socle montera rsa.
     { id = "RUSTSEC-2023-0071", reason = "rsa : vérification de signatures publiques seulement (agendo-webauthn)" },
-    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint : aucun secret dans la vérification ECDSA (agendo-webauthn)" },
     # basic-toml n'est lu qu'à la compilation, par la macro d'askama (askama.toml).
     { id = "RUSTSEC-2026-0374", reason = "basic-toml : macro d'askama à la compilation, sans donnée extérieure" },
 ]
@@ -42,7 +40,7 @@ wildcards = "allow"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-# Le socle : chemin local en développement, renvoyé vers GitHub en CI (`git config insteadOf`).
+# Le socle (dépôt privé), par SSH, à un tag publié.
 allow-git = [
-    "file:///Users/chue/workspace/agendo",
+    "ssh://git@github.com/charlyhue/agendo.git",
 ]
