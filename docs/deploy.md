@@ -230,32 +230,43 @@ variables* → *Actions*) :
 Dans Dokploy, l'application suit `:latest` ; revenir en arrière = passer l'image sur un `:<sha>`
 précédent. Dokploy lit GHCR avec un jeton GitHub (*Registry*) limité à `read:packages`.
 
-### Clé de déploiement (dépôt privé du socle)
+### Socle et clé de déploiement (dépôt privé)
 
-Le protocole et WebAuthn viennent de `charlyhue/agendo` (privé). `Cargo.toml` les déclare par
-le chemin local `file:///Users/chue/workspace/agendo` (branche `agendo-access`) ; la CI et
-l'image renvoient cette adresse vers GitHub (`git config url.<GitHub>.insteadOf <file://…>`),
-lue avec une clé de déploiement :
+Le protocole et WebAuthn viennent de `charlyhue/agendo` (privé), par SSH, à un tag publié :
 
-1. Poussez la branche du socle sur GitHub : `git -C /Users/chue/workspace/agendo push origin
-   agendo-access`. Le commit verrouillé dans `Cargo.lock` doit y être.
-2. Créez une paire de clés dédiée, sans phrase de passe :
+```toml
+agendo-access-protocol = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.41.0" }
+agendo-webauthn = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.41.0" }
+```
+
+`.cargo/config.toml` (`[net] git-fetch-with-cli = true`, et `CARGO_NET_GIT_FETCH_WITH_CLI` en
+CI et dans l'image) fait passer cargo par `git` et `ssh` : en local, l'agent SSH et
+`~/.ssh/config` de la personne suffisent ; en CI et dans l'image, une clé de déploiement en
+lecture :
+
+1. Créez une paire de clés dédiée, sans phrase de passe :
    `ssh-keygen -t ed25519 -N "" -C "agendo-access-cloud CI" -f agendo-deploy`.
-3. `charlyhue/agendo` → *Settings* → *Deploy keys* → *Add deploy key* : collez
+2. `charlyhue/agendo` → *Settings* → *Deploy keys* → *Add deploy key* : collez
    `agendo-deploy.pub`, **sans** « Allow write access ».
-4. `charlyhue/agendo-access-cloud` → secret Actions `AGENDO_DEPLOY_KEY` : collez le contenu de
+3. `charlyhue/agendo-access-cloud` → secret Actions `AGENDO_DEPLOY_KEY` : collez le contenu de
    `agendo-deploy` (clé privée), puis effacez les deux fichiers locaux.
 
-Quand le socle aura une URL GitHub et un tag pour ces crates, `Cargo.toml` passera à
-`git = "ssh://git@github.com/charlyhue/agendo.git", tag = "…"` et l'`insteadOf` disparaîtra.
+La CI charge la clé dans l'agent (`webfactory/ssh-agent`, qui ajoute aussi les clés d'hôte de
+GitHub) ; l'image la reçoit par `docker build --ssh default`.
+
+**Monter de version du socle** : changer le tag dans `Cargo.toml` (les deux lignes), puis
+`cargo update -p agendo-access-protocol -p agendo-webauthn`, tests, clippy et
+`cargo deny check` (les avis de sécurité ignorés dans `deny.toml` peuvent ne plus avoir lieu
+d'être). La spec qui fait foi est celle du tag :
+`git -C /Users/chue/workspace/agendo show v0.41.0:docs/superpowers/specs/2026-11-04-agendo-access-design.md`.
 
 ### Construire l'image à la main
 
 ```sh
-# Depuis GitHub (clé de l'agent SSH) :
+# Depuis GitHub (clé de l'agent SSH, en lecture sur charlyhue/agendo) :
 docker build --ssh default -t agendo-access-cloud .
-# Sans GitHub, depuis le dépôt local du socle :
-git clone --bare --single-branch -b agendo-access /Users/chue/workspace/agendo /tmp/agendo.git
+# Sans GitHub, depuis le dépôt local du socle (qui doit contenir le tag) :
+git clone --bare /Users/chue/workspace/agendo /tmp/agendo.git
 docker build --build-context agendo=/tmp/agendo.git --build-arg AGENDO_GIT=file:///agendo -t agendo-access-cloud .
 ```
 

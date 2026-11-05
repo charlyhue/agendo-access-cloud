@@ -33,33 +33,38 @@ async fn keys(State(state): State<AppState>) -> Response {
         .into_response()
 }
 
-/// Refus de l'API, avec le statut HTTP de sa raison.
+/// Refus de l'API, avec le statut HTTP que le protocole donne à sa raison
+/// ([`RefusalReason::http_status`]). Une erreur interne n'est pas un refus : elle porte la
+/// raison `unknown` mais répond en 5xx, pour que la maison réessaie plus tard au lieu de croire
+/// sa requête fautive.
 #[derive(Debug)]
 pub struct ApiError {
     pub refusal: Refusal,
+    internal: Option<StatusCode>,
 }
 
 impl ApiError {
     pub fn new(reason: RefusalReason, detail: impl Into<String>) -> Self {
         let detail = detail.into();
-        Self { refusal: Refusal { reason, detail: (!detail.is_empty()).then_some(detail) } }
+        Self { refusal: Refusal { reason, detail: (!detail.is_empty()).then_some(detail) }, internal: None }
+    }
+
+    /// Échec de notre côté (`status` : 500, ou 502 pour un service en amont).
+    pub fn internal(status: StatusCode, detail: &str) -> Self {
+        Self { internal: Some(status), ..Self::new(RefusalReason::Unknown, detail) }
     }
 
     pub fn status(&self) -> StatusCode {
-        match self.refusal.reason {
-            RefusalReason::SubscriptionInactive | RefusalReason::Revoked => StatusCode::FORBIDDEN,
-            RefusalReason::BadSignature => StatusCode::UNAUTHORIZED,
-            RefusalReason::RateLimited => StatusCode::TOO_MANY_REQUESTS,
-            RefusalReason::InvalidCode | RefusalReason::BadRequest => StatusCode::BAD_REQUEST,
-            RefusalReason::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
-        }
+        self.internal.unwrap_or_else(|| {
+            StatusCode::from_u16(self.refusal.reason.http_status()).unwrap_or(StatusCode::BAD_REQUEST)
+        })
     }
 }
 
 impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
         tracing::error!(erreur = %format!("{:#}", e.into()), "erreur interne de l'API des maisons");
-        Self::new(RefusalReason::Unknown, "erreur interne du plan de contrôle")
+        Self::internal(StatusCode::INTERNAL_SERVER_ERROR, "erreur interne du plan de contrôle")
     }
 }
 

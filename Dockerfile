@@ -1,11 +1,11 @@
 # Image du plan de contrôle : cargo-chef (cache des dépendances), binaire musl statique, image
 # `scratch` (le binaire, les certificats CA, rien d'autre ; utilisateur sans droits).
 #
-# Le socle (agendo-access-protocol, agendo-webauthn) est une dépendance Git déclarée
-# `file:///Users/chue/workspace/agendo` ; ici, `git config insteadOf` la renvoie vers
-# AGENDO_GIT (GitHub par SSH par défaut, clé de déploiement transmise par `--ssh default`).
-# Essai local sans GitHub (docs/deploy.md) :
-#   git clone --bare --single-branch -b agendo-access /Users/chue/workspace/agendo /tmp/agendo.git
+# Le socle (agendo-access-protocol, agendo-webauthn) vient de GitHub par SSH, à un tag
+# (Cargo.toml) : la clé de déploiement passe par l'agent SSH (`docker build --ssh default`).
+# Essai local sans GitHub (docs/deploy.md) : AGENDO_GIT renvoie l'URL GitHub vers un clone nu
+# monté par `--build-context agendo=…` :
+#   git clone --bare /Users/chue/workspace/agendo /tmp/agendo.git
 #   docker build --build-context agendo=/tmp/agendo.git --build-arg AGENDO_GIT=file:///agendo .
 
 ARG CHEF_IMAGE=lukemathwalker/cargo-chef:latest-rust-alpine
@@ -16,10 +16,12 @@ FROM scratch AS agendo
 FROM ${CHEF_IMAGE} AS chef
 RUN apk add --no-cache ca-certificates gcc git musl-dev openssh-client
 WORKDIR /app
-ARG AGENDO_GIT=ssh://git@github.com/charlyhue/agendo.git
+ARG AGENDO_GIT=
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 # Clé d'hôte publiée par GitHub (pas de confiance au premier contact).
-RUN git config --global url."${AGENDO_GIT}".insteadOf "file:///Users/chue/workspace/agendo" \
+RUN if [ -n "${AGENDO_GIT}" ]; then \
+      git config --global url."${AGENDO_GIT}".insteadOf "ssh://git@github.com/charlyhue/agendo.git"; \
+    fi \
  && git config --global --add safe.directory '*' \
  && mkdir -p -m 0700 /root/.ssh \
  && echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > /root/.ssh/known_hosts

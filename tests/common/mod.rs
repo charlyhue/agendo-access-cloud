@@ -310,7 +310,7 @@ pub async fn enrolled_house(app: &TestApp, email: &str, seed: u8) -> (agendo_acc
     (serde_json::from_slice(&r.body).unwrap(), agendo_access_protocol::SigningKey::from_bytes(&[seed; 32]), session)
 }
 
-/// Requête signée par la maison (`Agendo-House`, `Agendo-Signature` à l'instant `t`).
+/// Requête signée par la maison : `Agendo-Signature: house=<house_id>,t=<t>,sig=…`.
 pub async fn signed(
     app: &TestApp,
     method: Method,
@@ -320,8 +320,8 @@ pub async fn signed(
     key: &agendo_access_protocol::SigningKey,
     t: i64,
 ) -> TestResponse {
-    let signature = agendo_access_protocol::signature::sign_request(key, method.as_str(), path, body, t);
-    let mut request = app.request(method, path).header("agendo-house", house_id).header("agendo-signature", &signature);
+    let signature = agendo_access_protocol::signature::sign_request(key, house_id, method.as_str(), path, body, t);
+    let mut request = app.request(method, path).header("agendo-signature", &signature);
     if !body.is_empty() {
         request = request.header("content-type", "application/json");
     }

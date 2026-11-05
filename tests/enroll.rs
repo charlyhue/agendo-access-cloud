@@ -56,7 +56,7 @@ async fn enroll_code_single_use(pool: PgPool) {
     let code = enrollment_code(&app, &session).await;
     assert_eq!(enroll(&app, &code, 2, "Maison").await.status, StatusCode::OK);
     let again = enroll(&app, &code, 3, "Autre").await;
-    assert_eq!(again.status, StatusCode::BAD_REQUEST);
+    assert_eq!(again.status, StatusCode::FORBIDDEN);
     assert_eq!(reason(&again), "invalid_code");
     let houses: i64 = sqlx::query_scalar("SELECT count(*) FROM houses").fetch_one(&pool).await.unwrap();
     assert_eq!(houses, 1);
@@ -69,7 +69,7 @@ async fn enroll_code_expired(pool: PgPool) {
     let code = enrollment_code(&app, &session).await;
     app.clock.advance(Duration::minutes(15));
     let r = enroll(&app, &code, 2, "Maison").await;
-    assert_eq!((r.status, reason(&r).as_str()), (StatusCode::BAD_REQUEST, "invalid_code"));
+    assert_eq!((r.status, reason(&r).as_str()), (StatusCode::FORBIDDEN, "invalid_code"));
     let r = enroll(&app, "pas-un-code", 2, "Maison").await;
     assert_eq!(reason(&r), "invalid_code");
 }
@@ -172,4 +172,23 @@ async fn houses_of_other_account_hidden(pool: PgPool) {
     assert_eq!(r.status, StatusCode::NOT_FOUND);
     let revoked: bool = sqlx::query_scalar("SELECT revoked_at IS NOT NULL FROM houses").fetch_one(&pool).await.unwrap();
     assert!(!revoked);
+}
+
+/// Base64url canonique seulement (protocole v0.41) : une clé avec `=` est refusée, pas
+/// normalisée ; une seule forme par clé, donc une clé par maison.
+#[sqlx::test]
+async fn enroll_refuses_padded_key(pool: PgPool) {
+    use agendo_access_protocol::{SigningKey, keys::encode_public_key};
+    let app = TestApp::new(pool);
+    let (session, _) = onboard(&app, "alice@exemple.fr", 1).await;
+    let code = enrollment_code(&app, &session).await;
+    let key = encode_public_key(&SigningKey::from_bytes(&[2; 32]).verifying_key());
+    let r = app
+        .request(Method::POST, "/v1/houses/enroll")
+        .json(&serde_json::json!({"code": code, "house_key": format!("{key}="), "name": "Maison"}))
+        .send()
+        .await;
+    assert_eq!((r.status, reason(&r).as_str()), (StatusCode::BAD_REQUEST, "bad_request"));
+    // Le code reste utilisable avec la forme canonique.
+    assert_eq!(enroll(&app, &code, 2, "Maison").await.status, StatusCode::OK);
 }
