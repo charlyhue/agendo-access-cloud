@@ -6,7 +6,7 @@ all-features = false
 [advisories]
 # Tout avis RustSec non ignoré fait échouer la CI. Un avis ignoré porte sa raison.
 ignore = [
-    # rsa 0.9 (Marvin) arrive par agendo-webauthn (socle v0.41.0, qui a monté p256 en 0.14 mais
+    # rsa 0.9 (Marvin) arrive par agendo-webauthn (socle v0.42.0, qui a monté p256 en 0.14 mais
     # garde rsa 0.9.10). Le portail ne fait que vérifier des signatures WebAuthn avec des clés
     # publiques : aucun secret ne passe par ces calculs. À revoir quand le socle montera rsa.
     { id = "RUSTSEC-2023-0071", reason = "rsa : vérification de signatures publiques seulement (agendo-webauthn)" },

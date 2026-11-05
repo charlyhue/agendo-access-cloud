@@ -16,7 +16,7 @@ sans base de données.
 
 La spec qui fait foi vit dans le dépôt du socle :
 `docs/superpowers/specs/2026-11-04-agendo-access-design.md`, dans la version du tag dont dépend
-`Cargo.toml` (aujourd'hui `v0.41.0`).
+`Cargo.toml` (aujourd'hui `v0.42.0`).
 
 ## Stack
 

@@ -235,8 +235,8 @@ précédent. Dokploy lit GHCR avec un jeton GitHub (*Registry*) limité à `read
 Le protocole et WebAuthn viennent de `charlyhue/agendo` (privé), par SSH, à un tag publié :
 
 ```toml
-agendo-access-protocol = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.41.0" }
-agendo-webauthn = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.41.0" }
+agendo-access-protocol = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.42.0" }
+agendo-webauthn = { git = "ssh://git@github.com/charlyhue/agendo.git", tag = "v0.42.0" }
 ```
 
 `.cargo/config.toml` (`[net] git-fetch-with-cli = true`, et `CARGO_NET_GIT_FETCH_WITH_CLI` en
@@ -258,7 +258,7 @@ GitHub) ; l'image la reçoit par `docker build --ssh default`.
 `cargo update -p agendo-access-protocol -p agendo-webauthn`, tests, clippy et
 `cargo deny check` (les avis de sécurité ignorés dans `deny.toml` peuvent ne plus avoir lieu
 d'être). La spec qui fait foi est celle du tag :
-`git -C /Users/chue/workspace/agendo show v0.41.0:docs/superpowers/specs/2026-11-04-agendo-access-design.md`.
+`git -C /Users/chue/workspace/agendo show v0.42.0:docs/superpowers/specs/2026-11-04-agendo-access-design.md`.
 
 ### Construire l'image à la main
 

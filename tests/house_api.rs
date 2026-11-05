@@ -174,7 +174,7 @@ async fn deleted_account_house_is_revoked(pool: PgPool) {
 }
 
 /// Deux maisons : chacune est désignée par le `house` de sa signature, et l'en-tête
-/// `Agendo-House` d'avant le protocole v0.41 n'a plus d'effet.
+/// `Agendo-House` d'avant le protocole v0.42 n'a plus d'effet.
 #[sqlx::test]
 async fn signature_names_the_house(pool: PgPool) {
     let app = TestApp::new(pool);

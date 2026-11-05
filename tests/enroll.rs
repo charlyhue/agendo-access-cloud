@@ -174,7 +174,7 @@ async fn houses_of_other_account_hidden(pool: PgPool) {
     assert!(!revoked);
 }
 
-/// Base64url canonique seulement (protocole v0.41) : une clé avec `=` est refusée, pas
+/// Base64url canonique seulement (protocole v0.42) : une clé avec `=` est refusée, pas
 /// normalisée ; une seule forme par clé, donc une clé par maison.
 #[sqlx::test]
 async fn enroll_refuses_padded_key(pool: PgPool) {
