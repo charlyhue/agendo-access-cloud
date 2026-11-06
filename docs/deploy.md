@@ -15,11 +15,11 @@ le code n'en contient aucun, tout passe par les variables (section 5).
 
 | Rôle | Nom | Variable |
 |---|---|---|
-| Maisons | `<id>.agendo.charly-hue.fr` (`<id>` : 16 caractères base32) | `AGENDO_CLOUD_ZONE=agendo.charly-hue.fr` |
-| API des maisons (plan de contrôle) | `agendo-api.charly-hue.fr` | `AGENDO_CLOUD_API_URL` |
-| Portail ; RP ID WebAuthn ; cookie `__Host-` | `agendo-account.charly-hue.fr` | `AGENDO_CLOUD_PORTAL_URL` |
-| Relais SNI (tunnels des maisons) | `agendo-relay-1.charly-hue.fr`, puis `-2`, … | `AGENDO_CLOUD_RELAYS` (`tls://…`) |
-| Relais push | `agendo-push-1.charly-hue.fr`, puis `-2`, … | `AGENDO_CLOUD_PUSH_URLS` (`https://…`) |
+| Maisons | `<id>.home.agendo.charly-hue.fr` (`<id>` : 16 caractères base32) | `AGENDO_CLOUD_ZONE=home.agendo.charly-hue.fr` |
+| API des maisons (plan de contrôle) | `api.agendo.charly-hue.fr` | `AGENDO_CLOUD_API_URL` |
+| Portail ; RP ID WebAuthn ; cookie `__Host-` | `account.agendo.charly-hue.fr` | `AGENDO_CLOUD_PORTAL_URL` |
+| Relais SNI (tunnels des maisons) | `relay-1.agendo.charly-hue.fr`, puis `-2`, … | `AGENDO_CLOUD_RELAYS` (`tls://…`) |
+| Relais push | `push-1.agendo.charly-hue.fr`, puis `-2`, … | `AGENDO_CLOUD_PUSH_URLS` (`https://…`) |
 
 Les listes `AGENDO_CLOUD_RELAYS` et `AGENDO_CLOUD_PUSH_URLS` sont celles que le plan de contrôle
 renvoie aux maisons (rattachement, renouvellement des jetons) : en V1, seulement les `-1`.
@@ -36,14 +36,14 @@ maison ne servirait plus, et `X-Forwarded-For` donnerait l'IP de Cloudflare au l
 client.
 
 ```text
-agendo-api       A/AAAA  <IP du VPS Dokploy>        DNS only
-agendo-account   A/AAAA  <IP du VPS Dokploy>        DNS only
-agendo-relay-1   A/AAAA  <IP du relais 1>           DNS only   # le VPS Dokploy en V1
-agendo-push-1    A/AAAA  <IP du relais push 1>      DNS only
-*.agendo         A/AAAA  <IP de chaque relais SNI>  DNS only   # une ligne par relais : le joker vers tous
+api.agendo        A/AAAA  <IP du VPS Dokploy>        DNS only
+account.agendo    A/AAAA  <IP du VPS Dokploy>        DNS only
+relay-1.agendo    A/AAAA  <IP du relais 1>           DNS only   # le VPS Dokploy en V1
+push-1.agendo     A/AAAA  <IP du relais push 1>      DNS only
+*.home.agendo     A/AAAA  <IP de chaque relais SNI>  DNS only   # une ligne par relais : le joker vers tous
 ```
 
-Le plan de contrôle pose et retire lui-même les TXT `_acme-challenge.<id>.agendo` des
+Le plan de contrôle pose et retire lui-même les TXT `_acme-challenge.<id>.home.agendo` des
 certificats des maisons (deux valeurs au plus par nom).
 
 **Jeton d'API Cloudflare** (*My Profile* → *API Tokens* → *Create Token*, modèle « Edit zone
@@ -61,17 +61,17 @@ bas). Un CAA `0 issue "letsencrypt.org"` sur `charly-hue.fr` limite au moins l'�
 Encrypt, si les autres usages du domaine le permettent.
 
 **À savoir : le joker et les défis ACME.** Un joker ne s'applique pas à un nom qui existe
-(RFC 4592). Or poser `_acme-challenge.<id>.agendo.charly-hue.fr` fait exister `<id>.agendo…`
-(nœud vide) : tant que ce TXT existe, `<id>.agendo.charly-hue.fr` peut ne plus résoudre par le
+(RFC 4592). Or poser `_acme-challenge.<id>.home.agendo.charly-hue.fr` fait exister `<id>.home.agendo…`
+(nœud vide) : tant que ce TXT existe, `<id>.home.agendo.charly-hue.fr` peut ne plus résoudre par le
 joker. C'est une coupure de quelques minutes à chaque renouvellement de certificat (tous les ~60
 jours), et elle dure si un TXT n'est jamais retiré (maison arrêtée pendant le défi). À vérifier
-sur Cloudflare au premier certificat (`dig A <id>.agendo.charly-hue.fr` pendant le défi). Suivi
+sur Cloudflare au premier certificat (`dig A <id>.home.agendo.charly-hue.fr` pendant le défi). Suivi
 possible : poser un `A`/`AAAA` explicite par maison au rattachement, au lieu du seul joker.
 
 ### Plus tard : sous-zone déléguée pour le domaine définitif
 
 Pour isoler le jeton DNS du reste du domaine : déléguer la zone des maisons (par exemple
-`agendo.<domaine>`) par des enregistrements `NS` (et `DS` si DNSSEC) à une zone séparée, et
+`home.<domaine>`) par des enregistrements `NS` (et `DS` si DNSSEC) à une zone séparée, et
 donner au `DnsProvider` un jeton limité à elle. Un plan de contrôle compromis ne pourrait plus
 alors faire émettre de certificats que pour les maisons. Cloudflare n'héberge une telle
 sous-zone qu'avec l'offre Enterprise : il faudra soit un autre fournisseur pour elle (une
@@ -80,15 +80,18 @@ enregistré à part, dédié aux maisons, qui forme sa propre zone Cloudflare.
 
 ### Domaines temporaires : ce qui changera avec eux
 
-- **Passkeys du portail** : elles sont liées au RP ID `agendo-account.charly-hue.fr`. Avec un
+Sur le domaine définitif, les maisons seront `<id>.home.<domaine>`, et les services `api`,
+`account`, `relay-N` et `push-N` y seront directement sous `<domaine>`.
+
+- **Passkeys du portail** : elles sont liées au RP ID `account.agendo.charly-hue.fr`. Avec un
   autre nom de portail, elles ne valent plus. Les personnes se reconnectent par code e-mail,
   puis enregistrent une nouvelle passkey (page Compte).
-- **Maisons** : leur nom d'hôte complet (`<id>.agendo.charly-hue.fr`) est rangé au
+- **Maisons** : leur nom d'hôte complet (`<id>.home.agendo.charly-hue.fr`) est rangé au
   rattachement, et leurs certificats et jetons le portent. Changer `AGENDO_CLOUD_ZONE` ne
   renomme pas les maisons existantes : il faut les rattacher de nouveau.
 - **Jetons** : `iss` vaut `AGENDO_CLOUD_API_URL` ; les maisons et les relais le suivent par
   la configuration.
-- **Isolement** : tant que `agendo.charly-hue.fr` n'est pas sur la Public Suffix List, les
+- **Isolement** : tant que `home.agendo.charly-hue.fr` n'est pas sur la Public Suffix List, les
   maisons sont « même site » que le portail et que tout `charly-hue.fr`. Le cookie `__Host-`
   du portail ne peut pas être écrasé par un autre sous-domaine, et le portail exige son
   `Origin` sur tout POST. Let's Encrypt compte les certificats des maisons sur la limite de
@@ -119,11 +122,11 @@ L'image tourne sous l'utilisateur 65534 : les fichiers doivent lui être lisible
 
 ## 4. Clé de signature
 
-Elle signe les jetons de tunnel et push. Créez-la une fois, sur une machine sûre ou dans le
-terminal Dokploy de l'application :
+Elle signe les jetons de tunnel et push. Créez-la une fois, sur une machine sûre, depuis ce
+dépôt :
 
 ```sh
-agendo-access-cloud keygen --kid k1 /tmp/signing-key
+cargo run -- keygen --kid k1 /tmp/signing-key
 ```
 
 La commande écrit la graine (mode 0600, jamais d'écrasement) et affiche la ligne `k1=<clé
@@ -144,11 +147,11 @@ Obligatoires sauf mention. Aucun domaine ni seuil n'a de valeur par défaut dans
 |---|---|---|
 | `AGENDO_CLOUD_LISTEN` | `0.0.0.0:8080` (défaut de l'image) | adresse d'écoute |
 | `AGENDO_CLOUD_DATABASE_URL_FILE` | `/run/secrets/database-url` | URL de la base (fichier) |
-| `AGENDO_CLOUD_API_URL` | `https://agendo-api.charly-hue.fr` | API des maisons ; `iss` des jetons |
-| `AGENDO_CLOUD_PORTAL_URL` | `https://agendo-account.charly-hue.fr` | portail : origine WebAuthn, RP ID (son hôte), liens des e-mails |
-| `AGENDO_CLOUD_ZONE` | `agendo.charly-hue.fr` | `ZONE_MAISONS` : les maisons sont `<16 base32>.ZONE` |
-| `AGENDO_CLOUD_RELAYS` | `tls://agendo-relay-1.charly-hue.fr` | relais SNI annoncés, séparés par des virgules |
-| `AGENDO_CLOUD_PUSH_URLS` | `https://agendo-push-1.charly-hue.fr` | relais push (URL de base), séparés par des virgules |
+| `AGENDO_CLOUD_API_URL` | `https://api.agendo.charly-hue.fr` | API des maisons ; `iss` des jetons |
+| `AGENDO_CLOUD_PORTAL_URL` | `https://account.agendo.charly-hue.fr` | portail : origine WebAuthn, RP ID (son hôte), liens des e-mails |
+| `AGENDO_CLOUD_ZONE` | `home.agendo.charly-hue.fr` | `ZONE_MAISONS` : les maisons sont `<16 base32>.ZONE` |
+| `AGENDO_CLOUD_RELAYS` | `tls://relay-1.agendo.charly-hue.fr` | relais SNI annoncés, séparés par des virgules |
+| `AGENDO_CLOUD_PUSH_URLS` | `https://push-1.agendo.charly-hue.fr` | relais push (URL de base), séparés par des virgules |
 | `AGENDO_CLOUD_SIGNING_KEY_FILE` | `/run/secrets/signing-key` | graine de la clé de signature (fichier) |
 | `AGENDO_CLOUD_SIGNING_KID` | `k1` | identifiant de la clé courante |
 | `AGENDO_CLOUD_PUBLISHED_KEYS` | `k0=…` | facultatif : anciennes clés encore publiées (rotation) |
@@ -175,20 +178,23 @@ Les logs sont en JSON sur la sortie d'erreur, sans secret : la route est journal
 ## 6. Traefik
 
 Deux domaines sur l'application (Dokploy → *Domains*), port 8080, HTTPS par Let's Encrypt :
-`agendo-api.charly-hue.fr` et `agendo-account.charly-hue.fr`. Le portail exige HTTPS (cookie `__Host-`, WebAuthn).
+`api.agendo.charly-hue.fr` et `account.agendo.charly-hue.fr`. Le portail exige HTTPS (cookie `__Host-`, WebAuthn).
 Le bilan de santé de l'image (`HEALTHCHECK`) appelle `agendo-access-cloud healthcheck`
 (`GET /healthz`, qui interroge la base).
 
 ## 7. Administration
 
-Dans le terminal Dokploy de l'application (même environnement et mêmes fichiers que `serve`) :
+L'image `scratch` n'a pas de shell : le terminal de Dokploy ne s'y ouvre pas. Les commandes se
+lancent en SSH sur le serveur, par `docker exec`, avec l'environnement et les fichiers de
+`serve`. `<appName>` est le nom de l'application dans Dokploy :
 
 ```sh
-agendo-access-cloud admin invite personne@exemple.fr   # compte invité, lien de 7 jours par e-mail
-agendo-access-cloud admin list
-agendo-access-cloud admin suspend personne@exemple.fr  # jetons refusés : subscription_inactive
-agendo-access-cloud admin resume personne@exemple.fr
-agendo-access-cloud admin revoke-house <hôte ou étiquette>
+conteneur="$(docker ps -q -f name=<appName>)"
+docker exec "$conteneur" /agendo-access-cloud admin invite personne@exemple.fr   # compte invité, lien de 7 jours par e-mail
+docker exec "$conteneur" /agendo-access-cloud admin list
+docker exec "$conteneur" /agendo-access-cloud admin suspend personne@exemple.fr  # jetons refusés : subscription_inactive
+docker exec "$conteneur" /agendo-access-cloud admin resume personne@exemple.fr
+docker exec "$conteneur" /agendo-access-cloud admin revoke-house <hôte ou étiquette>
 ```
 
 Relancer `invite` sur un compte encore invité renvoie un nouveau lien (l'ancien cesse de valoir).
